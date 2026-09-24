@@ -8,6 +8,7 @@ import com.veloop.rewards.user.entity.User;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
@@ -47,5 +48,16 @@ public class AuthController {
                         "success", true,
                         "message", "Login successful",
                         "user", response));
+    }
+
+    @GetMapping("/me")
+    public ResponseEntity<?> getCurrentUser(Authentication authentication) {
+
+        Long userId = (Long) authentication.getPrincipal();
+
+        return ResponseEntity.ok(
+                Map.of(
+                        "success", true,
+                        "userId", userId));
     }
 }
