@@ -1,5 +1,7 @@
 package com.veloop.rewards.auth.service;
 
+import com.veloop.rewards.auth.dto.LoginRequest;
+import com.veloop.rewards.auth.dto.LoginResponse;
 import com.veloop.rewards.auth.dto.RegisterRequest;
 import com.veloop.rewards.user.entity.User;
 import com.veloop.rewards.user.repository.UserRepository;
@@ -40,5 +42,29 @@ public class AuthService {
                 .build();
 
         return userRepository.save(user);
+    }
+
+    public LoginResponse login(LoginRequest request) {
+
+        String email = request.email().trim().toLowerCase();
+
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new IllegalArgumentException("Invalid email or password"));
+
+        if (!"ACTIVE".equals(user.getAccountStatus())) {
+            throw new IllegalArgumentException("User account is not active");
+        }
+
+        if (!passwordEncoder.matches(
+                request.password(),
+                user.getPasswordHash())) {
+            throw new IllegalArgumentException("Invalid email or password");
+        }
+
+        return new LoginResponse(
+                user.getId(),
+                user.getEmail(),
+                user.getName(),
+                user.getRole());
     }
 }

@@ -1,6 +1,8 @@
 package com.veloop.rewards.auth.controller;
 
 import com.veloop.rewards.auth.dto.RegisterRequest;
+import com.veloop.rewards.auth.dto.LoginRequest;
+import com.veloop.rewards.auth.dto.LoginResponse;
 import com.veloop.rewards.auth.service.AuthService;
 import com.veloop.rewards.user.entity.User;
 import jakarta.validation.Valid;
@@ -32,5 +34,18 @@ public class AuthController {
                         "success", true,
                         "message", "User registered successfully",
                         "userId", user.getId()));
+    }
+
+    @PostMapping("/login")
+    public ResponseEntity<?> login(
+            @Valid @RequestBody LoginRequest request) {
+
+        LoginResponse response = authService.login(request);
+
+        return ResponseEntity.ok(
+                Map.of(
+                        "success", true,
+                        "message", "Login successful",
+                        "user", response));
     }
 }
