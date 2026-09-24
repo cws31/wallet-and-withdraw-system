@@ -3,6 +3,8 @@ package com.veloop.rewards.auth.service;
 import com.veloop.rewards.auth.dto.LoginRequest;
 import com.veloop.rewards.auth.dto.LoginResponse;
 import com.veloop.rewards.auth.dto.RegisterRequest;
+import com.veloop.rewards.common.exception.AuthenticationFailedException;
+import com.veloop.rewards.common.exception.BusinessException;
 import com.veloop.rewards.security.JwtService;
 import com.veloop.rewards.user.entity.User;
 import com.veloop.rewards.user.repository.UserRepository;
@@ -31,7 +33,8 @@ public class AuthService {
         String email = request.email().trim().toLowerCase();
 
         if (userRepository.existsByEmail(email)) {
-            throw new IllegalArgumentException("Email is already registered");
+            throw new BusinessException(
+                    "Email is already registered");
         }
 
         User user = User.builder()
@@ -52,18 +55,18 @@ public class AuthService {
         String email = request.email().trim().toLowerCase();
 
         User user = userRepository.findByEmail(email)
-                .orElseThrow(() -> new IllegalArgumentException(
+                .orElseThrow(() -> new AuthenticationFailedException(
                         "Invalid email or password"));
 
         if (!"ACTIVE".equals(user.getAccountStatus())) {
-            throw new IllegalArgumentException(
+            throw new AuthenticationFailedException(
                     "User account is not active");
         }
 
         if (!passwordEncoder.matches(
                 request.password(),
                 user.getPasswordHash())) {
-            throw new IllegalArgumentException(
+            throw new AuthenticationFailedException(
                     "Invalid email or password");
         }
 

@@ -1,6 +1,9 @@
 package com.veloop.rewards.config;
 
+import com.veloop.rewards.security.AccessDeniedExceptionHandler;
 import com.veloop.rewards.security.JwtAuthenticationFilter;
+import com.veloop.rewards.security.SecurityExceptionHandler;
+
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -14,9 +17,16 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
+    private final SecurityExceptionHandler securityExceptionHandler;
+    private final AccessDeniedExceptionHandler accessDeniedExceptionHandler;
 
-    public SecurityConfig(JwtAuthenticationFilter jwtAuthenticationFilter) {
+    public SecurityConfig(
+            JwtAuthenticationFilter jwtAuthenticationFilter,
+            SecurityExceptionHandler securityExceptionHandler,
+            AccessDeniedExceptionHandler accessDeniedExceptionHandler) {
         this.jwtAuthenticationFilter = jwtAuthenticationFilter;
+        this.securityExceptionHandler = securityExceptionHandler;
+        this.accessDeniedExceptionHandler = accessDeniedExceptionHandler;
     }
 
     @Bean
@@ -37,6 +47,10 @@ public class SecurityConfig {
                 .formLogin(form -> form.disable())
 
                 .httpBasic(httpBasic -> httpBasic.disable())
+
+                .exceptionHandling(exception -> exception
+                        .authenticationEntryPoint(securityExceptionHandler)
+                        .accessDeniedHandler(accessDeniedExceptionHandler))
 
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(

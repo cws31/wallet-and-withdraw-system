@@ -1,5 +1,6 @@
 package com.veloop.rewards.security;
 
+import io.jsonwebtoken.JwtException;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -17,9 +18,13 @@ import java.util.List;
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JwtService jwtService;
+    private final SecurityExceptionHandler securityExceptionHandler;
 
-    public JwtAuthenticationFilter(JwtService jwtService) {
+    public JwtAuthenticationFilter(
+            JwtService jwtService,
+            SecurityExceptionHandler securityExceptionHandler) {
         this.jwtService = jwtService;
+        this.securityExceptionHandler = securityExceptionHandler;
     }
 
     @Override
@@ -30,39 +35,82 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
         String authHeader = request.getHeader("Authorization");
 
-        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+        if (authHeader == null || authHeader.isBlank()) {
             filterChain.doFilter(request, response);
             return;
         }
 
-        String token = authHeader.substring(7);
+        if (!authHeader.startsWith("Bearer ")) {
+
+            securityExceptionHandler.sendUnauthorized(
+                    request,
+                    response,
+                    "Invalid Authorization header");
+
+            return;
+        }
+
+        String token = authHeader.substring(7).trim();
+
+        if (token.isBlank()) {
+
+            securityExceptionHandler.sendUnauthorized(
+                    request,
+                    response,
+                    "Bearer token is missing");
+
+            return;
+        }
 
         try {
 
-            if (jwtService.isTokenValid(token)) {
+            if (!jwtService.isTokenValid(token)) {
 
-                Long userId = jwtService.extractUserId(token);
+                securityExceptionHandler.sendUnauthorized(
+                        request,
+                        response,
+                        "Invalid or expired token");
 
-                String role = jwtService
-                        .extractAllClaims(token)
-                        .get("role", String.class);
-
-                UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
-                        userId,
-                        null,
-                        List.of(
-                                new SimpleGrantedAuthority(
-                                        "ROLE_" + role)));
-
-                SecurityContextHolder
-                        .getContext()
-                        .setAuthentication(authentication);
+                return;
             }
 
-        } catch (Exception ignored) {
-            SecurityContextHolder.clearContext();
-        }
+            Long userId = jwtService.extractUserId(token);
 
-        filterChain.doFilter(request, response);
+            String role = jwtService
+                    .extractAllClaims(token)
+                    .get("role", String.class);
+
+            if (userId == null || role == null || role.isBlank()) {
+
+                securityExceptionHandler.sendUnauthorized(
+                        request,
+                        response,
+                        "Invalid token claims");
+
+                return;
+            }
+
+            UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
+                    userId,
+                    null,
+                    List.of(
+                            new SimpleGrantedAuthority(
+                                    "ROLE_" + role)));
+
+            SecurityContextHolder
+                    .getContext()
+                    .setAuthentication(authentication);
+
+            filterChain.doFilter(request, response);
+
+        } catch (JwtException | IllegalArgumentException ex) {
+
+            SecurityContextHolder.clearContext();
+
+            securityExceptionHandler.sendUnauthorized(
+                    request,
+                    response,
+                    "Invalid or expired token");
+        }
     }
 }
