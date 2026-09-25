@@ -1,0 +1,31 @@
+CREATE TABLE wallets (
+    id BIGINT NOT NULL AUTO_INCREMENT,
+
+    user_id BIGINT NOT NULL,
+
+    ves DECIMAL(19,4) NOT NULL DEFAULT 0.0000,
+    sves DECIMAL(19,4) NOT NULL DEFAULT 0.0000,
+    gems DECIMAL(19,4) NOT NULL DEFAULT 0.0000,
+    tokens DECIMAL(19,4) NOT NULL DEFAULT 0.0000,
+    spins DECIMAL(19,4) NOT NULL DEFAULT 0.0000,
+
+    withdrawn_ves DECIMAL(19,4) NOT NULL DEFAULT 0.0000,
+
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        ON UPDATE CURRENT_TIMESTAMP,
+
+    version BIGINT NOT NULL DEFAULT 0,
+
+    PRIMARY KEY (id),
+
+    CONSTRAINT uk_wallet_user
+        UNIQUE (user_id),
+
+    CONSTRAINT fk_wallet_user
+        FOREIGN KEY (user_id)
+        REFERENCES users(id)
+        ON DELETE CASCADE,
+
+    INDEX idx_wallet_user_id (user_id)
+);
