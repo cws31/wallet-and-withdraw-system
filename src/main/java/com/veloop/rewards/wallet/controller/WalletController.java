@@ -19,6 +19,13 @@ import com.veloop.rewards.common.response.PageResponse;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.security.access.prepost.PreAuthorize;
+import com.veloop.rewards.common.response.ApiResponse;
+import com.veloop.rewards.wallet.dto.WalletCreditRequest;
+import jakarta.validation.Valid;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 
 @RestController
 @RequestMapping("/api/wallet")
@@ -92,6 +99,25 @@ public class WalletController {
         return ResponseEntity.ok(
                 ApiResponse.success(
                         "Wallet summary retrieved successfully",
+                        response));
+    }
+
+    @PreAuthorize("hasRole('ADMIN')")
+    @PostMapping("/credit")
+    @Operation(summary = "Credit wallet", description = "Credits a user's wallet. This endpoint is restricted to administrators.", security = @SecurityRequirement(name = "bearerAuth"))
+    public ResponseEntity<ApiResponse<WalletResponse>> creditWallet(
+            Authentication authentication,
+            @Valid @RequestBody WalletCreditRequest request) {
+
+        Long userId = Long.valueOf(authentication.getName());
+
+        Wallet wallet = walletService.creditWallet(userId, request);
+
+        WalletResponse response = WalletResponse.from(wallet);
+
+        return ResponseEntity.ok(
+                ApiResponse.success(
+                        "Wallet credited successfully",
                         response));
     }
 }
