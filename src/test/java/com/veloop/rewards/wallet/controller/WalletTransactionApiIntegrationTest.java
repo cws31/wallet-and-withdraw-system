@@ -115,7 +115,27 @@ class WalletTransactionApiIntegrationTest {
                         is("REWARD")))
                 .andExpect(jsonPath(
                         "$.data.content[0].amount",
-                        is(5000.0)));
+                        is(5000.0)))
+
+                .andExpect(jsonPath(
+                        "$.data.page",
+                        is(1)))
+                .andExpect(jsonPath(
+                        "$.data.limit",
+                        is(20)))
+                .andExpect(jsonPath(
+                        "$.data.totalElements",
+                        is(1)))
+                .andExpect(jsonPath(
+                        "$.data.totalPages",
+                        is(1)))
+                .andExpect(jsonPath(
+                        "$.data.hasNext",
+                        is(false)))
+                .andExpect(jsonPath(
+                        "$.data.hasPrevious",
+                        is(false)));
+
     }
 
     @Test

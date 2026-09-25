@@ -7,6 +7,8 @@ import com.veloop.rewards.wallet.enums.TransactionType;
 import com.veloop.rewards.wallet.repository.WalletTransactionRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import com.veloop.rewards.common.response.PageResponse;
 import com.veloop.rewards.wallet.dto.WalletTransactionResponse;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -68,13 +70,24 @@ public class WalletTransactionService {
     }
 
     @Transactional(readOnly = true)
-    public Page<WalletTransactionResponse> getTransactions(
+    public PageResponse<WalletTransactionResponse> getTransactions(
             Long userId,
             Pageable pageable) {
 
-        return transactionRepository
-                .findByUserIdOrderByCreatedAtDesc(userId, pageable)
+        Page<WalletTransactionResponse> page = transactionRepository
+                .findByUserIdOrderByCreatedAtDesc(
+                        userId,
+                        pageable)
                 .map(WalletTransactionResponse::from);
+
+        return new PageResponse<>(
+                page.getContent(),
+                page.getNumber() + 1,
+                page.getSize(),
+                page.getTotalElements(),
+                page.getTotalPages(),
+                page.hasNext(),
+                page.hasPrevious());
     }
 
     @Transactional(readOnly = true)
