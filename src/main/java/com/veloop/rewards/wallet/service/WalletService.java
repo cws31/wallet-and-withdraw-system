@@ -15,142 +15,116 @@ import java.math.BigDecimal;
 @Service
 public class WalletService {
 
-    private final WalletRepository walletRepository;
+        private final WalletRepository walletRepository;
 
-    public WalletService(WalletRepository walletRepository) {
-        this.walletRepository = walletRepository;
-    }
-
-    @Transactional
-    public Wallet createWallet(Long userId) {
-
-        if (walletRepository.existsByUserId(userId)) {
-            throw new WalletAlreadyExistsException(userId);
+        public WalletService(WalletRepository walletRepository) {
+                this.walletRepository = walletRepository;
         }
 
-        Wallet wallet = new Wallet();
-        wallet.setUserId(userId);
+        @Transactional
+        public Wallet createWallet(Long userId) {
 
-        return walletRepository.save(wallet);
-    }
+                if (walletRepository.existsByUserId(userId)) {
+                        throw new WalletAlreadyExistsException(userId);
+                }
 
-    @Transactional(readOnly = true)
-    public Wallet getWallet(Long userId) {
+                Wallet wallet = new Wallet();
+                wallet.setUserId(userId);
 
-        return walletRepository.findByUserId(userId)
-                .orElseThrow(() -> new WalletNotFoundException(userId));
-    }
-
-    @Transactional
-    public Wallet creditWallet(
-            Long userId,
-            Currency currency,
-            BigDecimal amount) {
-
-        if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
-            throw new InvalidAmountException();
+                return walletRepository.save(wallet);
         }
 
-        Wallet wallet = getWallet(userId);
+        @Transactional(readOnly = true)
+        public Wallet getWallet(Long userId) {
 
-        switch (currency) {
-            case VES -> wallet.setVes(
-                    wallet.getVes().add(amount));
-
-            case SVES -> wallet.setSves(
-                    wallet.getSves().add(amount));
-
-            case GEMS -> wallet.setGems(
-                    wallet.getGems().add(amount));
-
-            case TOKENS -> wallet.setTokens(
-                    wallet.getTokens().add(amount));
-
-            case SPINS -> wallet.setSpins(
-                    wallet.getSpins().add(amount));
+                return walletRepository.findByUserId(userId)
+                                .orElseThrow(() -> new WalletNotFoundException(userId));
         }
 
-        return walletRepository.save(wallet);
-    }
+        @Transactional
+        public Wallet creditWallet(
+                        Long userId,
+                        Currency currency,
+                        BigDecimal amount) {
 
-    @Transactional
-    public Wallet debitWallet(
-            Long userId,
-            Currency currency,
-            BigDecimal amount) {
+                if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
+                        throw new InvalidAmountException();
+                }
 
-        if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
-            throw new InvalidAmountException();
+                Wallet wallet = getWallet(userId);
+
+                BigDecimal currentBalance = getBalance(wallet, currency);
+
+                BigDecimal newBalance = currentBalance.add(amount);
+
+                setBalance(wallet, currency, newBalance);
+
+                return walletRepository.save(wallet);
         }
 
-        Wallet wallet = getWallet(userId);
+        @Transactional
+        public Wallet debitWallet(
+                        Long userId,
+                        Currency currency,
+                        BigDecimal amount) {
 
-        switch (currency) {
+                if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
+                        throw new InvalidAmountException();
+                }
 
-            case VES -> {
+                Wallet wallet = getWallet(userId);
+
+                BigDecimal currentBalance = getBalance(wallet, currency);
+
                 validateBalance(
-                        currency,
-                        wallet.getVes(),
-                        amount);
+                                currency,
+                                currentBalance,
+                                amount);
 
-                wallet.setVes(
-                        wallet.getVes().subtract(amount));
-            }
+                BigDecimal newBalance = currentBalance.subtract(amount);
 
-            case SVES -> {
-                validateBalance(
-                        currency,
-                        wallet.getSves(),
-                        amount);
+                setBalance(wallet, currency, newBalance);
 
-                wallet.setSves(
-                        wallet.getSves().subtract(amount));
-            }
-
-            case GEMS -> {
-                validateBalance(
-                        currency,
-                        wallet.getGems(),
-                        amount);
-
-                wallet.setGems(
-                        wallet.getGems().subtract(amount));
-            }
-
-            case TOKENS -> {
-                validateBalance(
-                        currency,
-                        wallet.getTokens(),
-                        amount);
-
-                wallet.setTokens(
-                        wallet.getTokens().subtract(amount));
-            }
-
-            case SPINS -> {
-                validateBalance(
-                        currency,
-                        wallet.getSpins(),
-                        amount);
-
-                wallet.setSpins(
-                        wallet.getSpins().subtract(amount));
-            }
+                return walletRepository.save(wallet);
         }
 
-        return walletRepository.save(wallet);
-    }
+        private void validateBalance(
+                        Currency currency,
+                        BigDecimal available,
+                        BigDecimal requested) {
 
-    private void validateBalance(
-            Currency currency,
-            BigDecimal available,
-            BigDecimal requested) {
-
-        if (available.compareTo(requested) < 0) {
-            throw new InsufficientBalanceException(
-                    currency.name(),
-                    available,
-                    requested);
+                if (available.compareTo(requested) < 0) {
+                        throw new InsufficientBalanceException(
+                                        currency.name(),
+                                        available,
+                                        requested);
+                }
         }
-    }
+
+        private BigDecimal getBalance(
+                        Wallet wallet,
+                        Currency currency) {
+
+                return switch (currency) {
+                        case VES -> wallet.getVes();
+                        case SVES -> wallet.getSves();
+                        case GEMS -> wallet.getGems();
+                        case TOKENS -> wallet.getTokens();
+                        case SPINS -> wallet.getSpins();
+                };
+        }
+
+        private void setBalance(
+                        Wallet wallet,
+                        Currency currency,
+                        BigDecimal balance) {
+
+                switch (currency) {
+                        case VES -> wallet.setVes(balance);
+                        case SVES -> wallet.setSves(balance);
+                        case GEMS -> wallet.setGems(balance);
+                        case TOKENS -> wallet.setTokens(balance);
+                        case SPINS -> wallet.setSpins(balance);
+                }
+        }
 }
