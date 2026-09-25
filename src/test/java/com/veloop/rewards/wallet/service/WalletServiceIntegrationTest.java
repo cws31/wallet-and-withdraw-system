@@ -17,9 +17,10 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.SpyBean;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.transaction.annotation.Transactional;
-
+import org.mockito.Mockito;
 import java.math.BigDecimal;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -36,6 +37,9 @@ class WalletServiceIntegrationTest {
 
         @Autowired
         private WalletTransactionRepository walletTransactionRepository;
+
+        @SpyBean
+        private WalletTransactionService walletTransactionService;
 
         @Autowired
         private UserRepository userRepository;
@@ -411,5 +415,62 @@ class WalletServiceIntegrationTest {
 
                 assertNotNull(
                                 transaction.getCreatedAt());
+        }
+
+        @Test
+        void shouldRollbackWalletUpdateWhenLedgerCreationFails() {
+
+                Wallet initialWallet = walletService.getWallet(testUserId);
+
+                assertEquals(
+                                0,
+                                initialWallet.getVes().compareTo(
+                                                BigDecimal.ZERO));
+
+                Mockito.doThrow(
+                                new RuntimeException("Simulated ledger failure"))
+                                .when(walletTransactionService)
+                                .createTransaction(
+                                                Mockito.anyLong(),
+                                                Mockito.anyLong(),
+                                                Mockito.any(Currency.class),
+                                                Mockito.any(TransactionType.class),
+                                                Mockito.any(BigDecimal.class),
+                                                Mockito.any(BigDecimal.class),
+                                                Mockito.any(BigDecimal.class),
+                                                Mockito.anyString(),
+                                                Mockito.anyString(),
+                                                Mockito.any(TransactionStatus.class),
+                                                Mockito.anyString(),
+                                                Mockito.anyString());
+
+                assertThrows(
+                                RuntimeException.class,
+                                () -> walletService.creditWallet(
+                                                testUserId,
+                                                new WalletCreditRequest(
+                                                                Currency.VES,
+                                                                new BigDecimal("1000"),
+                                                                TransactionType.REWARD,
+                                                                "TEST",
+                                                                "ATOMICITY-001",
+                                                                "Atomicity test",
+                                                                null)));
+
+                walletRepository.flush();
+
+                Wallet walletAfterFailure = walletRepository
+                                .findByUserId(testUserId)
+                                .orElseThrow();
+
+                assertEquals(
+                                0,
+                                walletAfterFailure.getVes().compareTo(
+                                                BigDecimal.ZERO));
+
+                assertTrue(
+                                walletTransactionRepository
+                                                .findByReferenceId("ATOMICITY-001")
+                                                .isEmpty());
         }
 }
