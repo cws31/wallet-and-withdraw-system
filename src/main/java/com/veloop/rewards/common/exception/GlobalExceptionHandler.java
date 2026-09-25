@@ -8,7 +8,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
-
+import org.springframework.security.authorization.AuthorizationDeniedException;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -108,6 +108,19 @@ public class GlobalExceptionHandler {
                                                                 "Validation failed",
                                                                 request.getRequestURI(),
                                                                 errors));
+        }
+
+        @ExceptionHandler(AuthorizationDeniedException.class)
+        public ResponseEntity<ErrorResponse> handleAuthorizationDenied(
+                        AuthorizationDeniedException ex,
+                        HttpServletRequest request) {
+
+                return ResponseEntity
+                                .status(HttpStatus.FORBIDDEN)
+                                .body(
+                                                ErrorResponse.of(
+                                                                "Access denied",
+                                                                request.getRequestURI()));
         }
 
         @ExceptionHandler(Exception.class)
