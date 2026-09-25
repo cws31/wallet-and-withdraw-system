@@ -26,6 +26,11 @@ import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import com.veloop.rewards.wallet.dto.WalletDebitRequest;
+import jakarta.validation.Valid;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 
 @RestController
 @RequestMapping("/api/wallet")
@@ -118,6 +123,27 @@ public class WalletController {
         return ResponseEntity.ok(
                 ApiResponse.success(
                         "Wallet credited successfully",
+                        response));
+    }
+
+    @PreAuthorize("hasRole('ADMIN')")
+    @PostMapping("/debit")
+    @Operation(summary = "Debit wallet", description = "Debits a user's wallet. This endpoint is restricted to administrators.", security = @SecurityRequirement(name = "bearerAuth"))
+    public ResponseEntity<ApiResponse<WalletResponse>> debitWallet(
+            Authentication authentication,
+            @Valid @RequestBody WalletDebitRequest request) {
+
+        Long userId = Long.valueOf(authentication.getName());
+
+        Wallet wallet = walletService.debitWallet(
+                userId,
+                request);
+
+        WalletResponse response = WalletResponse.from(wallet);
+
+        return ResponseEntity.ok(
+                ApiResponse.success(
+                        "Wallet debited successfully",
                         response));
     }
 }
