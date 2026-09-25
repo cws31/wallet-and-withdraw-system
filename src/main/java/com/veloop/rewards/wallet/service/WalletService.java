@@ -1,5 +1,6 @@
 package com.veloop.rewards.wallet.service;
 
+import com.veloop.rewards.wallet.dto.WalletSummaryResponse;
 import com.veloop.rewards.common.exception.InsufficientBalanceException;
 import com.veloop.rewards.common.exception.InvalidAmountException;
 import com.veloop.rewards.common.exception.WalletAlreadyExistsException;
@@ -189,5 +190,21 @@ public class WalletService {
                         case TOKENS -> wallet.setTokens(balance);
                         case SPINS -> wallet.setSpins(balance);
                 }
+        }
+
+        @Transactional(readOnly = true)
+        public WalletSummaryResponse getWalletSummary(Long userId) {
+
+                Wallet wallet = getWallet(userId);
+
+                long totalTransactions = walletTransactionService.countTransactions(userId);
+
+                return new WalletSummaryResponse(
+                                wallet.getVes(),
+                                wallet.getSves(),
+                                wallet.getGems(),
+                                wallet.getTokens(),
+                                wallet.getSpins(),
+                                totalTransactions);
         }
 }

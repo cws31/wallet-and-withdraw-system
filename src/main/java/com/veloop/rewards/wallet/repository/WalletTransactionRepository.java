@@ -19,4 +19,6 @@ public interface WalletTransactionRepository
         Page<WalletTransaction> findByUserIdOrderByCreatedAtDesc(
                         Long userId,
                         Pageable pageable);
+
+        long countByUserId(Long userId);
 }

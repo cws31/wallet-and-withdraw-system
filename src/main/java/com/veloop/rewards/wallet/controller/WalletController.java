@@ -2,6 +2,7 @@ package com.veloop.rewards.wallet.controller;
 
 import com.veloop.rewards.common.response.ApiResponse;
 import com.veloop.rewards.wallet.dto.WalletResponse;
+import com.veloop.rewards.wallet.dto.WalletSummaryResponse;
 import com.veloop.rewards.wallet.entity.Wallet;
 import com.veloop.rewards.wallet.service.WalletService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -77,5 +78,20 @@ public class WalletController {
                 ApiResponse.success(
                         "Wallet transactions retrieved successfully",
                         transactions));
+    }
+
+    @GetMapping("/summary")
+    @Operation(summary = "Get current user's wallet summary", description = "Returns wallet balances and total transaction count for the currently authenticated user.", security = @SecurityRequirement(name = "bearerAuth"))
+    public ResponseEntity<ApiResponse<WalletSummaryResponse>> getWalletSummary(
+            Authentication authentication) {
+
+        Long userId = Long.valueOf(authentication.getName());
+
+        WalletSummaryResponse response = walletService.getWalletSummary(userId);
+
+        return ResponseEntity.ok(
+                ApiResponse.success(
+                        "Wallet summary retrieved successfully",
+                        response));
     }
 }

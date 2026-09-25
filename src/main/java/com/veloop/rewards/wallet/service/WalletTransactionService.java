@@ -76,4 +76,10 @@ public class WalletTransactionService {
                 .findByUserIdOrderByCreatedAtDesc(userId, pageable)
                 .map(WalletTransactionResponse::from);
     }
+
+    @Transactional(readOnly = true)
+    public long countTransactions(Long userId) {
+
+        return transactionRepository.countByUserId(userId);
+    }
 }
