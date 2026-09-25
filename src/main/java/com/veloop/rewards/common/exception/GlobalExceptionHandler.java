@@ -15,85 +15,111 @@ import java.util.Map;
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
-    @ExceptionHandler(AuthenticationFailedException.class)
-    public ResponseEntity<ErrorResponse> handleAuthenticationFailed(
-            AuthenticationFailedException ex,
-            HttpServletRequest request) {
+        @ExceptionHandler(AuthenticationFailedException.class)
+        public ResponseEntity<ErrorResponse> handleAuthenticationFailed(
+                        AuthenticationFailedException ex,
+                        HttpServletRequest request) {
 
-        return ResponseEntity
-                .status(HttpStatus.UNAUTHORIZED)
-                .body(
-                        ErrorResponse.of(
-                                ex.getMessage(),
-                                request.getRequestURI()));
-    }
+                return ResponseEntity
+                                .status(HttpStatus.UNAUTHORIZED)
+                                .body(
+                                                ErrorResponse.of(
+                                                                ex.getMessage(),
+                                                                request.getRequestURI()));
+        }
 
-    @ExceptionHandler(BusinessException.class)
-    public ResponseEntity<ErrorResponse> handleBusinessException(
-            BusinessException ex,
-            HttpServletRequest request) {
+        @ExceptionHandler(WalletNotFoundException.class)
+        public ResponseEntity<ErrorResponse> handleWalletNotFound(
+                        WalletNotFoundException ex,
+                        HttpServletRequest request) {
 
-        return ResponseEntity
-                .status(HttpStatus.BAD_REQUEST)
-                .body(
-                        ErrorResponse.of(
-                                ex.getMessage(),
-                                request.getRequestURI()));
-    }
+                return ResponseEntity
+                                .status(HttpStatus.NOT_FOUND)
+                                .body(
+                                                ErrorResponse.of(
+                                                                ex.getMessage(),
+                                                                request.getRequestURI()));
+        }
 
-    @ExceptionHandler(MethodArgumentNotValidException.class)
-    public ResponseEntity<ErrorResponse> handleMethodArgumentNotValid(
-            MethodArgumentNotValidException ex,
-            HttpServletRequest request) {
+        @ExceptionHandler(WalletAlreadyExistsException.class)
+        public ResponseEntity<ErrorResponse> handleWalletAlreadyExists(
+                        WalletAlreadyExistsException ex,
+                        HttpServletRequest request) {
 
-        Map<String, String> errors = new LinkedHashMap<>();
+                return ResponseEntity
+                                .status(HttpStatus.CONFLICT)
+                                .body(
+                                                ErrorResponse.of(
+                                                                ex.getMessage(),
+                                                                request.getRequestURI()));
+        }
 
-        ex.getBindingResult()
-                .getFieldErrors()
-                .forEach(error -> errors.putIfAbsent(
-                        error.getField(),
-                        error.getDefaultMessage()));
+        @ExceptionHandler(BusinessException.class)
+        public ResponseEntity<ErrorResponse> handleBusinessException(
+                        BusinessException ex,
+                        HttpServletRequest request) {
 
-        return ResponseEntity
-                .status(HttpStatus.BAD_REQUEST)
-                .body(
-                        ErrorResponse.validation(
-                                "Validation failed",
-                                request.getRequestURI(),
-                                errors));
-    }
+                return ResponseEntity
+                                .status(HttpStatus.BAD_REQUEST)
+                                .body(
+                                                ErrorResponse.of(
+                                                                ex.getMessage(),
+                                                                request.getRequestURI()));
+        }
 
-    @ExceptionHandler(ConstraintViolationException.class)
-    public ResponseEntity<ErrorResponse> handleConstraintViolation(
-            ConstraintViolationException ex,
-            HttpServletRequest request) {
+        @ExceptionHandler(MethodArgumentNotValidException.class)
+        public ResponseEntity<ErrorResponse> handleMethodArgumentNotValid(
+                        MethodArgumentNotValidException ex,
+                        HttpServletRequest request) {
 
-        Map<String, String> errors = new LinkedHashMap<>();
+                Map<String, String> errors = new LinkedHashMap<>();
 
-        ex.getConstraintViolations()
-                .forEach(violation -> errors.put(
-                        violation.getPropertyPath().toString(),
-                        violation.getMessage()));
+                ex.getBindingResult()
+                                .getFieldErrors()
+                                .forEach(error -> errors.putIfAbsent(
+                                                error.getField(),
+                                                error.getDefaultMessage()));
 
-        return ResponseEntity
-                .status(HttpStatus.BAD_REQUEST)
-                .body(
-                        ErrorResponse.validation(
-                                "Validation failed",
-                                request.getRequestURI(),
-                                errors));
-    }
+                return ResponseEntity
+                                .status(HttpStatus.BAD_REQUEST)
+                                .body(
+                                                ErrorResponse.validation(
+                                                                "Validation failed",
+                                                                request.getRequestURI(),
+                                                                errors));
+        }
 
-    @ExceptionHandler(Exception.class)
-    public ResponseEntity<ErrorResponse> handleUnexpectedException(
-            Exception ex,
-            HttpServletRequest request) {
+        @ExceptionHandler(ConstraintViolationException.class)
+        public ResponseEntity<ErrorResponse> handleConstraintViolation(
+                        ConstraintViolationException ex,
+                        HttpServletRequest request) {
 
-        return ResponseEntity
-                .status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body(
-                        ErrorResponse.of(
-                                "An unexpected error occurred",
-                                request.getRequestURI()));
-    }
+                Map<String, String> errors = new LinkedHashMap<>();
+
+                ex.getConstraintViolations()
+                                .forEach(violation -> errors.put(
+                                                violation.getPropertyPath().toString(),
+                                                violation.getMessage()));
+
+                return ResponseEntity
+                                .status(HttpStatus.BAD_REQUEST)
+                                .body(
+                                                ErrorResponse.validation(
+                                                                "Validation failed",
+                                                                request.getRequestURI(),
+                                                                errors));
+        }
+
+        @ExceptionHandler(Exception.class)
+        public ResponseEntity<ErrorResponse> handleUnexpectedException(
+                        Exception ex,
+                        HttpServletRequest request) {
+
+                return ResponseEntity
+                                .status(HttpStatus.INTERNAL_SERVER_ERROR)
+                                .body(
+                                                ErrorResponse.of(
+                                                                "An unexpected error occurred",
+                                                                request.getRequestURI()));
+        }
 }
