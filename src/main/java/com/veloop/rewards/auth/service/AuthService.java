@@ -8,6 +8,8 @@ import com.veloop.rewards.common.exception.BusinessException;
 import com.veloop.rewards.security.JwtService;
 import com.veloop.rewards.user.entity.User;
 import com.veloop.rewards.user.repository.UserRepository;
+import com.veloop.rewards.wallet.service.WalletService;
+
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -15,71 +17,80 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class AuthService {
 
-    private final UserRepository userRepository;
-    private final PasswordEncoder passwordEncoder;
-    private final JwtService jwtService;
+        private final UserRepository userRepository;
+        private final PasswordEncoder passwordEncoder;
+        private final JwtService jwtService;
+        private final WalletService walletService;
 
-    public AuthService(
-            UserRepository userRepository,
-            PasswordEncoder passwordEncoder, JwtService jwtService) {
-        this.userRepository = userRepository;
-        this.passwordEncoder = passwordEncoder;
-        this.jwtService = jwtService;
-    }
+        public AuthService(
+                        UserRepository userRepository,
+                        PasswordEncoder passwordEncoder,
+                        JwtService jwtService,
+                        WalletService walletService) {
 
-    @Transactional
-    public User register(RegisterRequest request) {
-
-        String email = request.email().trim().toLowerCase();
-
-        if (userRepository.existsByEmail(email)) {
-            throw new BusinessException(
-                    "Email is already registered");
+                this.userRepository = userRepository;
+                this.passwordEncoder = passwordEncoder;
+                this.jwtService = jwtService;
+                this.walletService = walletService;
         }
 
-        User user = User.builder()
-                .name(request.name().trim())
-                .email(email)
-                .passwordHash(passwordEncoder.encode(request.password()))
-                .role("USER")
-                .accountStatus("ACTIVE")
-                .verified(false)
-                .level(0)
-                .build();
+        @Transactional
+        public User register(RegisterRequest request) {
 
-        return userRepository.save(user);
-    }
+                String email = request.email().trim().toLowerCase();
 
-    public LoginResponse login(LoginRequest request) {
+                if (userRepository.existsByEmail(email)) {
+                        throw new BusinessException(
+                                        "Email is already registered");
+                }
 
-        String email = request.email().trim().toLowerCase();
+                User user = User.builder()
+                                .name(request.name().trim())
+                                .email(email)
+                                .passwordHash(passwordEncoder.encode(request.password()))
+                                .role("USER")
+                                .accountStatus("ACTIVE")
+                                .verified(false)
+                                .level(0)
+                                .build();
 
-        User user = userRepository.findByEmail(email)
-                .orElseThrow(() -> new AuthenticationFailedException(
-                        "Invalid email or password"));
+                User savedUser = userRepository.save(user);
 
-        if (!"ACTIVE".equals(user.getAccountStatus())) {
-            throw new AuthenticationFailedException(
-                    "User account is not active");
+                walletService.createWallet(savedUser.getId());
+
+                return savedUser;
         }
 
-        if (!passwordEncoder.matches(
-                request.password(),
-                user.getPasswordHash())) {
-            throw new AuthenticationFailedException(
-                    "Invalid email or password");
+        public LoginResponse login(LoginRequest request) {
+
+                String email = request.email().trim().toLowerCase();
+
+                User user = userRepository.findByEmail(email)
+                                .orElseThrow(() -> new AuthenticationFailedException(
+                                                "Invalid email or password"));
+
+                if (!"ACTIVE".equals(user.getAccountStatus())) {
+                        throw new AuthenticationFailedException(
+                                        "User account is not active");
+                }
+
+                if (!passwordEncoder.matches(
+                                request.password(),
+                                user.getPasswordHash())) {
+                        throw new AuthenticationFailedException(
+                                        "Invalid email or password");
+                }
+
+                String token = jwtService.generateToken(
+                                user.getId(),
+                                user.getEmail(),
+                                user.getRole());
+
+                return new LoginResponse(
+                                user.getId(),
+                                user.getEmail(),
+                                user.getName(),
+                                user.getRole(),
+                                token);
         }
-
-        String token = jwtService.generateToken(
-                user.getId(),
-                user.getEmail(),
-                user.getRole());
-
-        return new LoginResponse(
-                user.getId(),
-                user.getEmail(),
-                user.getName(),
-                user.getRole(),
-                token);
-    }
 }
