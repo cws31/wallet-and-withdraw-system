@@ -9,16 +9,22 @@ import com.veloop.rewards.wallet.repository.WalletRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import com.veloop.rewards.wallet.enums.Currency;
-
+import com.veloop.rewards.wallet.dto.WalletCreditRequest;
+import com.veloop.rewards.wallet.enums.TransactionStatus;
 import java.math.BigDecimal;
 
 @Service
 public class WalletService {
 
         private final WalletRepository walletRepository;
+        private final WalletTransactionService walletTransactionService;
 
-        public WalletService(WalletRepository walletRepository) {
+        public WalletService(
+                        WalletRepository walletRepository,
+                        WalletTransactionService walletTransactionService) {
+
                 this.walletRepository = walletRepository;
+                this.walletTransactionService = walletTransactionService;
         }
 
         @Transactional
@@ -44,22 +50,50 @@ public class WalletService {
         @Transactional
         public Wallet creditWallet(
                         Long userId,
-                        Currency currency,
-                        BigDecimal amount) {
+                        WalletCreditRequest request) {
 
-                if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
+                if (request == null) {
+                        throw new InvalidAmountException();
+                }
+
+                Currency currency = request.currency();
+                BigDecimal amount = request.amount();
+
+                if (currency == null ||
+                                amount == null ||
+                                amount.compareTo(BigDecimal.ZERO) <= 0) {
+
                         throw new InvalidAmountException();
                 }
 
                 Wallet wallet = getWallet(userId);
 
-                BigDecimal currentBalance = getBalance(wallet, currency);
+                BigDecimal balanceBefore = getBalance(wallet, currency);
 
-                BigDecimal newBalance = currentBalance.add(amount);
+                BigDecimal balanceAfter = balanceBefore.add(amount);
 
-                setBalance(wallet, currency, newBalance);
+                setBalance(
+                                wallet,
+                                currency,
+                                balanceAfter);
 
-                return walletRepository.save(wallet);
+                Wallet savedWallet = walletRepository.save(wallet);
+
+                walletTransactionService.createTransaction(
+                                userId,
+                                savedWallet.getId(),
+                                currency,
+                                request.transactionType(),
+                                amount,
+                                balanceBefore,
+                                balanceAfter,
+                                request.source(),
+                                request.referenceId(),
+                                TransactionStatus.COMPLETED,
+                                request.description(),
+                                request.metadata());
+
+                return savedWallet;
         }
 
         @Transactional
