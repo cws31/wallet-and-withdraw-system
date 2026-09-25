@@ -7,7 +7,9 @@ import com.veloop.rewards.wallet.enums.TransactionType;
 import com.veloop.rewards.wallet.repository.WalletTransactionRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
+import com.veloop.rewards.wallet.dto.WalletTransactionResponse;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.UUID;
@@ -63,5 +65,15 @@ public class WalletTransactionService {
     private String generateTransactionId() {
 
         return "TXN-" + UUID.randomUUID();
+    }
+
+    @Transactional(readOnly = true)
+    public Page<WalletTransactionResponse> getTransactions(
+            Long userId,
+            Pageable pageable) {
+
+        return transactionRepository
+                .findByUserIdOrderByCreatedAtDesc(userId, pageable)
+                .map(WalletTransactionResponse::from);
     }
 }
