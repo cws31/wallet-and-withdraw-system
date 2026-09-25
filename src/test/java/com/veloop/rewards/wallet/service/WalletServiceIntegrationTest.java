@@ -5,10 +5,14 @@ import com.veloop.rewards.common.exception.InvalidAmountException;
 import com.veloop.rewards.user.entity.User;
 import com.veloop.rewards.user.repository.UserRepository;
 import com.veloop.rewards.wallet.dto.WalletCreditRequest;
+import com.veloop.rewards.wallet.dto.WalletDebitRequest;
 import com.veloop.rewards.wallet.entity.Wallet;
+import com.veloop.rewards.wallet.entity.WalletTransaction;
 import com.veloop.rewards.wallet.enums.Currency;
+import com.veloop.rewards.wallet.enums.TransactionStatus;
 import com.veloop.rewards.wallet.enums.TransactionType;
 import com.veloop.rewards.wallet.repository.WalletRepository;
+import com.veloop.rewards.wallet.repository.WalletTransactionRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -29,6 +33,9 @@ class WalletServiceIntegrationTest {
 
         @Autowired
         private WalletRepository walletRepository;
+
+        @Autowired
+        private WalletTransactionRepository walletTransactionRepository;
 
         @Autowired
         private UserRepository userRepository;
@@ -54,8 +61,7 @@ class WalletServiceIntegrationTest {
 
                 User savedUser = userRepository.save(user);
 
-                Wallet wallet = walletService.createWallet(
-                                savedUser.getId());
+                walletService.createWallet(savedUser.getId());
 
                 testUserId = savedUser.getId();
         }
@@ -75,8 +81,9 @@ class WalletServiceIntegrationTest {
                                                 null));
 
                 assertEquals(
-                                new BigDecimal("1000"),
-                                wallet.getVes());
+                                0,
+                                wallet.getVes().compareTo(
+                                                new BigDecimal("1000")));
         }
 
         @Test
@@ -95,12 +102,19 @@ class WalletServiceIntegrationTest {
 
                 Wallet wallet = walletService.debitWallet(
                                 testUserId,
-                                Currency.VES,
-                                new BigDecimal("1000"));
+                                new WalletDebitRequest(
+                                                Currency.VES,
+                                                new BigDecimal("1000"),
+                                                TransactionType.WITHDRAWAL,
+                                                "TEST",
+                                                "TEST-DEBIT-001",
+                                                "Test withdrawal debit",
+                                                null));
 
                 assertEquals(
-                                new BigDecimal("500"),
-                                wallet.getVes());
+                                0,
+                                wallet.getVes().compareTo(
+                                                new BigDecimal("500")));
         }
 
         @Test
@@ -121,8 +135,14 @@ class WalletServiceIntegrationTest {
                                 InsufficientBalanceException.class,
                                 () -> walletService.debitWallet(
                                                 testUserId,
-                                                Currency.VES,
-                                                new BigDecimal("1000")));
+                                                new WalletDebitRequest(
+                                                                Currency.VES,
+                                                                new BigDecimal("1000"),
+                                                                TransactionType.WITHDRAWAL,
+                                                                "TEST",
+                                                                "TEST-DEBIT-002",
+                                                                "Insufficient balance test",
+                                                                null)));
         }
 
         @Test
@@ -149,8 +169,14 @@ class WalletServiceIntegrationTest {
                                 InvalidAmountException.class,
                                 () -> walletService.debitWallet(
                                                 testUserId,
-                                                Currency.VES,
-                                                new BigDecimal("-100")));
+                                                new WalletDebitRequest(
+                                                                Currency.VES,
+                                                                new BigDecimal("-100"),
+                                                                TransactionType.WITHDRAWAL,
+                                                                "TEST",
+                                                                "TEST-DEBIT-003",
+                                                                "Negative amount test",
+                                                                null)));
         }
 
         @Test
@@ -181,15 +207,209 @@ class WalletServiceIntegrationTest {
                 Wallet wallet = walletService.getWallet(testUserId);
 
                 assertEquals(
-                                new BigDecimal("1000"),
-                                wallet.getVes());
+                                0,
+                                wallet.getVes().compareTo(
+                                                new BigDecimal("1000")));
 
                 assertEquals(
-                                new BigDecimal("250"),
-                                wallet.getGems());
+                                0,
+                                wallet.getGems().compareTo(
+                                                new BigDecimal("250")));
 
                 assertEquals(
-                                BigDecimal.ZERO,
-                                wallet.getSves());
+                                0,
+                                wallet.getSves().compareTo(
+                                                BigDecimal.ZERO));
+
+                assertEquals(
+                                0,
+                                wallet.getTokens().compareTo(
+                                                BigDecimal.ZERO));
+
+                assertEquals(
+                                0,
+                                wallet.getSpins().compareTo(
+                                                BigDecimal.ZERO));
+        }
+
+        @Test
+        void shouldCreateLedgerEntryWhenWalletIsCredited() {
+
+                Wallet wallet = walletService.creditWallet(
+                                testUserId,
+                                new WalletCreditRequest(
+                                                Currency.VES,
+                                                new BigDecimal("1000"),
+                                                TransactionType.REWARD,
+                                                "TEST",
+                                                "TEST-LEDGER-001",
+                                                "Test reward credit",
+                                                null));
+
+                assertEquals(
+                                0,
+                                wallet.getVes().compareTo(
+                                                new BigDecimal("1000")));
+
+                WalletTransaction transaction = walletTransactionRepository
+                                .findByReferenceId(
+                                                "TEST-LEDGER-001")
+                                .orElseThrow();
+
+                assertNotNull(
+                                transaction.getTransactionId());
+
+                assertTrue(
+                                transaction.getTransactionId()
+                                                .startsWith("TXN-"));
+
+                assertEquals(
+                                testUserId,
+                                transaction.getUserId());
+
+                assertEquals(
+                                wallet.getId(),
+                                transaction.getWalletId());
+
+                assertEquals(
+                                Currency.VES,
+                                transaction.getCurrency());
+
+                assertEquals(
+                                TransactionType.REWARD,
+                                transaction.getTransactionType());
+
+                assertEquals(
+                                0,
+                                transaction.getAmount().compareTo(
+                                                new BigDecimal("1000")));
+
+                assertEquals(
+                                0,
+                                transaction.getBalanceBefore().compareTo(
+                                                BigDecimal.ZERO));
+
+                assertEquals(
+                                0,
+                                transaction.getBalanceAfter().compareTo(
+                                                new BigDecimal("1000")));
+
+                assertEquals(
+                                "TEST",
+                                transaction.getSource());
+
+                assertEquals(
+                                "TEST-LEDGER-001",
+                                transaction.getReferenceId());
+
+                assertEquals(
+                                TransactionStatus.COMPLETED,
+                                transaction.getStatus());
+
+                assertEquals(
+                                "Test reward credit",
+                                transaction.getDescription());
+
+                assertNull(
+                                transaction.getMetadata());
+
+                assertNotNull(
+                                transaction.getCreatedAt());
+        }
+
+        @Test
+        void shouldCreateLedgerEntryWhenWalletIsDebited() {
+
+                walletService.creditWallet(
+                                testUserId,
+                                new WalletCreditRequest(
+                                                Currency.VES,
+                                                new BigDecimal("1500"),
+                                                TransactionType.REWARD,
+                                                "TEST",
+                                                "TEST-DEBIT-LEDGER-CREDIT",
+                                                "Initial test credit",
+                                                null));
+
+                Wallet wallet = walletService.debitWallet(
+                                testUserId,
+                                new WalletDebitRequest(
+                                                Currency.VES,
+                                                new BigDecimal("1000"),
+                                                TransactionType.WITHDRAWAL,
+                                                "TEST",
+                                                "TEST-DEBIT-LEDGER-001",
+                                                "Test withdrawal debit",
+                                                null));
+
+                assertEquals(
+                                0,
+                                wallet.getVes().compareTo(
+                                                new BigDecimal("500")));
+
+                WalletTransaction transaction = walletTransactionRepository
+                                .findByReferenceId(
+                                                "TEST-DEBIT-LEDGER-001")
+                                .orElseThrow();
+
+                assertNotNull(
+                                transaction.getTransactionId());
+
+                assertTrue(
+                                transaction.getTransactionId()
+                                                .startsWith("TXN-"));
+
+                assertEquals(
+                                testUserId,
+                                transaction.getUserId());
+
+                assertEquals(
+                                wallet.getId(),
+                                transaction.getWalletId());
+
+                assertEquals(
+                                Currency.VES,
+                                transaction.getCurrency());
+
+                assertEquals(
+                                TransactionType.WITHDRAWAL,
+                                transaction.getTransactionType());
+
+                assertEquals(
+                                0,
+                                transaction.getAmount().compareTo(
+                                                new BigDecimal("1000")));
+
+                assertEquals(
+                                0,
+                                transaction.getBalanceBefore().compareTo(
+                                                new BigDecimal("1500")));
+
+                assertEquals(
+                                0,
+                                transaction.getBalanceAfter().compareTo(
+                                                new BigDecimal("500")));
+
+                assertEquals(
+                                "TEST",
+                                transaction.getSource());
+
+                assertEquals(
+                                "TEST-DEBIT-LEDGER-001",
+                                transaction.getReferenceId());
+
+                assertEquals(
+                                TransactionStatus.COMPLETED,
+                                transaction.getStatus());
+
+                assertEquals(
+                                "Test withdrawal debit",
+                                transaction.getDescription());
+
+                assertNull(
+                                transaction.getMetadata());
+
+                assertNotNull(
+                                transaction.getCreatedAt());
         }
 }
