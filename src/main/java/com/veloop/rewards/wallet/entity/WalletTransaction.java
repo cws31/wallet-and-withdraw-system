@@ -71,6 +71,10 @@ public class WalletTransaction {
     protected WalletTransaction() {
     }
 
+    public static WalletTransaction create() {
+        return new WalletTransaction();
+    }
+
     public Long getId() {
         return id;
     }
