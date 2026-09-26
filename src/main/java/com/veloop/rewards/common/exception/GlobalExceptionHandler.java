@@ -54,6 +54,32 @@ public class GlobalExceptionHandler {
                                                                 request.getRequestURI()));
         }
 
+        @ExceptionHandler(WithdrawalNotFoundException.class)
+        public ResponseEntity<ErrorResponse> handleWithdrawalNotFound(
+                        WithdrawalNotFoundException ex,
+                        HttpServletRequest request) {
+
+                return ResponseEntity
+                                .status(HttpStatus.NOT_FOUND)
+                                .body(
+                                                ErrorResponse.of(
+                                                                ex.getMessage(),
+                                                                request.getRequestURI()));
+        }
+
+        @ExceptionHandler(WithdrawalOwnershipException.class)
+        public ResponseEntity<ErrorResponse> handleWithdrawalOwnership(
+                        WithdrawalOwnershipException ex,
+                        HttpServletRequest request) {
+
+                return ResponseEntity
+                                .status(HttpStatus.FORBIDDEN)
+                                .body(
+                                                ErrorResponse.of(
+                                                                ex.getMessage(),
+                                                                request.getRequestURI()));
+        }
+
         @ExceptionHandler(BusinessException.class)
         public ResponseEntity<ErrorResponse> handleBusinessException(
                         BusinessException ex,
