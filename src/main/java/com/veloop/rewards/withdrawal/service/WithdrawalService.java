@@ -294,6 +294,66 @@ public class WithdrawalService {
         return toResponse(savedWithdrawal);
     }
 
+    @Transactional
+    public WithdrawalResponse cancelWithdrawal(
+            Long userId,
+            String withdrawalId) {
+
+        Withdrawal withdrawal = withdrawalRepository
+                .findByWithdrawalId(withdrawalId)
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "Withdrawal not found"));
+
+        if (!withdrawal.getUser().getId().equals(userId)) {
+            throw new IllegalArgumentException(
+                    "Withdrawal does not belong to the authenticated user");
+        }
+
+        if (withdrawal.getStatus() != WithdrawalStatus.PENDING) {
+            throw new IllegalArgumentException(
+                    "Only PENDING withdrawals can be cancelled");
+        }
+
+        WalletTransaction originalTransaction = withdrawal.getTransaction();
+
+        if (originalTransaction == null) {
+            throw new IllegalStateException(
+                    "Original withdrawal transaction not found");
+        }
+
+        if (originalTransaction.getCurrency() != Currency.VES) {
+            throw new IllegalStateException(
+                    "Withdrawal transaction currency is not VES");
+        }
+
+        BigDecimal reversalAmount = originalTransaction.getAmount();
+
+        String reversalReference = withdrawal.getWithdrawalId() + "-CANCELLATION-REVERSAL";
+
+        WalletCreditRequest reversalRequest = new WalletCreditRequest(
+                Currency.VES,
+                reversalAmount,
+                TransactionType.CORRECTION,
+                "WITHDRAWAL_CANCELLED",
+                reversalReference,
+                "Withdrawal cancelled - balance reversal",
+                null);
+
+        walletService.creditWallet(
+                userId,
+                reversalRequest);
+
+        LocalDateTime now = LocalDateTime.now();
+
+        withdrawal.setStatus(WithdrawalStatus.CANCELLED);
+        withdrawal.setProcessedAt(now);
+        withdrawal.setUpdatedAt(now);
+
+        Withdrawal savedWithdrawal = withdrawalRepository.save(withdrawal);
+
+        return toResponse(savedWithdrawal);
+    }
+
     private WithdrawalResponse toResponse(
             Withdrawal withdrawal) {
 

@@ -144,4 +144,23 @@ public class WithdrawalController {
                         "Withdrawal rejected and balance reversed",
                         response));
     }
+
+    @PreAuthorize("hasRole('USER')")
+    @PatchMapping("/{withdrawalId}/cancel")
+    @Operation(summary = "Cancel withdrawal", description = "Cancels a pending withdrawal and reverses the previously deducted VES.", security = @SecurityRequirement(name = "bearerAuth"))
+    public ResponseEntity<ApiResponse<WithdrawalResponse>> cancelWithdrawal(
+            Authentication authentication,
+            @PathVariable String withdrawalId) {
+
+        Long userId = Long.valueOf(authentication.getName());
+
+        WithdrawalResponse response = withdrawalService.cancelWithdrawal(
+                userId,
+                withdrawalId);
+
+        return ResponseEntity.ok(
+                ApiResponse.success(
+                        "Withdrawal cancelled and balance reversed",
+                        response));
+    }
 }
