@@ -6,6 +6,7 @@ import com.veloop.rewards.payout.entity.PayoutOption;
 import com.veloop.rewards.payout.repository.PayoutMethodRepository;
 import com.veloop.rewards.payout.repository.PayoutOptionRepository;
 import com.veloop.rewards.user.entity.User;
+import com.veloop.rewards.wallet.dto.WalletCreditRequest;
 import com.veloop.rewards.wallet.dto.WalletDebitRequest;
 import com.veloop.rewards.wallet.enums.Currency;
 import com.veloop.rewards.wallet.enums.TransactionType;
@@ -177,6 +178,120 @@ public class WithdrawalService {
         }
 
         return toResponse(withdrawal);
+    }
+
+    @Transactional
+    public WithdrawalResponse markProcessing(
+            String withdrawalId) {
+
+        Withdrawal withdrawal = withdrawalRepository
+                .findByWithdrawalId(withdrawalId)
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "Withdrawal not found"));
+
+        if (withdrawal.getStatus() != WithdrawalStatus.PENDING) {
+            throw new IllegalArgumentException(
+                    "Only PENDING withdrawals can be moved to PROCESSING");
+        }
+
+        withdrawal.setStatus(WithdrawalStatus.PROCESSING);
+        withdrawal.setUpdatedAt(LocalDateTime.now());
+
+        return toResponse(
+                withdrawalRepository.save(withdrawal));
+    }
+
+    @Transactional
+    public WithdrawalResponse approveWithdrawal(
+            String withdrawalId) {
+
+        Withdrawal withdrawal = withdrawalRepository
+                .findByWithdrawalId(withdrawalId)
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "Withdrawal not found"));
+
+        if (withdrawal.getStatus() != WithdrawalStatus.PENDING
+                && withdrawal.getStatus() != WithdrawalStatus.PROCESSING) {
+
+            throw new IllegalArgumentException(
+                    "Only PENDING or PROCESSING withdrawals can be approved");
+        }
+
+        LocalDateTime now = LocalDateTime.now();
+
+        withdrawal.setStatus(WithdrawalStatus.APPROVED);
+        withdrawal.setProcessedAt(now);
+        withdrawal.setUpdatedAt(now);
+
+        return toResponse(
+                withdrawalRepository.save(withdrawal));
+    }
+
+    @Transactional
+    public WithdrawalResponse rejectWithdrawal(
+            String withdrawalId,
+            String rejectionReason,
+            String reviewNote) {
+
+        Withdrawal withdrawal = withdrawalRepository
+                .findByWithdrawalId(withdrawalId)
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "Withdrawal not found"));
+
+        if (withdrawal.getStatus() != WithdrawalStatus.PENDING
+                && withdrawal.getStatus() != WithdrawalStatus.PROCESSING) {
+
+            throw new IllegalArgumentException(
+                    "Only PENDING or PROCESSING withdrawals can be rejected");
+        }
+
+        if (rejectionReason == null
+                || rejectionReason.isBlank()) {
+
+            throw new IllegalArgumentException(
+                    "Rejection reason is required");
+        }
+
+        WalletTransaction originalTransaction = withdrawal.getTransaction();
+
+        if (originalTransaction == null) {
+            throw new IllegalStateException(
+                    "Original withdrawal transaction not found");
+        }
+
+        BigDecimal reversalAmount = originalTransaction.getAmount();
+
+        if (originalTransaction.getCurrency() != Currency.VES) {
+            throw new IllegalStateException(
+                    "Withdrawal transaction currency is not VES");
+        }
+
+        String reversalReference = withdrawal.getWithdrawalId() + "-REVERSAL";
+
+        WalletCreditRequest reversalRequest = new WalletCreditRequest(
+                Currency.VES,
+                reversalAmount,
+                TransactionType.CORRECTION,
+                "WITHDRAWAL_REJECTED",
+                reversalReference,
+                "Withdrawal rejected - balance reversal",
+                null);
+
+        walletService.creditWallet(
+                withdrawal.getUser().getId(),
+                reversalRequest);
+
+        LocalDateTime now = LocalDateTime.now();
+
+        withdrawal.setStatus(WithdrawalStatus.REJECTED);
+        withdrawal.setRejectionReason(rejectionReason);
+        withdrawal.setReviewNote(reviewNote);
+        withdrawal.setProcessedAt(now);
+        withdrawal.setUpdatedAt(now);
+
+        Withdrawal savedWithdrawal = withdrawalRepository.save(withdrawal);
+
+        return toResponse(savedWithdrawal);
     }
 
     private WithdrawalResponse toResponse(

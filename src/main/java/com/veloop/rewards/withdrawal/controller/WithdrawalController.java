@@ -15,6 +15,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.security.access.prepost.PreAuthorize;
 
 @RestController
 @RequestMapping("/api/withdrawals")
@@ -94,6 +95,53 @@ public class WithdrawalController {
         return ResponseEntity.ok(
                 ApiResponse.success(
                         "Withdrawal retrieved successfully",
+                        response));
+    }
+
+    @PreAuthorize("hasRole('ADMIN')")
+    @PatchMapping("/{withdrawalId}/processing")
+    @Operation(summary = "Move withdrawal to processing", description = "Marks a pending withdrawal as PROCESSING. Admin only.", security = @SecurityRequirement(name = "bearerAuth"))
+    public ResponseEntity<ApiResponse<WithdrawalResponse>> markProcessing(
+            @PathVariable String withdrawalId) {
+
+        WithdrawalResponse response = withdrawalService.markProcessing(withdrawalId);
+
+        return ResponseEntity.ok(
+                ApiResponse.success(
+                        "Withdrawal moved to processing",
+                        response));
+    }
+
+    @PreAuthorize("hasRole('ADMIN')")
+    @PatchMapping("/{withdrawalId}/approve")
+    @Operation(summary = "Approve withdrawal", description = "Approves a pending or processing withdrawal. Admin only.", security = @SecurityRequirement(name = "bearerAuth"))
+    public ResponseEntity<ApiResponse<WithdrawalResponse>> approveWithdrawal(
+            @PathVariable String withdrawalId) {
+
+        WithdrawalResponse response = withdrawalService.approveWithdrawal(withdrawalId);
+
+        return ResponseEntity.ok(
+                ApiResponse.success(
+                        "Withdrawal approved successfully",
+                        response));
+    }
+
+    @PreAuthorize("hasRole('ADMIN')")
+    @PatchMapping("/{withdrawalId}/reject")
+    @Operation(summary = "Reject withdrawal", description = "Rejects a withdrawal and reverses the previously deducted VES. Admin only.", security = @SecurityRequirement(name = "bearerAuth"))
+    public ResponseEntity<ApiResponse<WithdrawalResponse>> rejectWithdrawal(
+            @PathVariable String withdrawalId,
+            @RequestParam String rejectionReason,
+            @RequestParam(required = false) String reviewNote) {
+
+        WithdrawalResponse response = withdrawalService.rejectWithdrawal(
+                withdrawalId,
+                rejectionReason,
+                reviewNote);
+
+        return ResponseEntity.ok(
+                ApiResponse.success(
+                        "Withdrawal rejected and balance reversed",
                         response));
     }
 }
