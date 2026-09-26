@@ -3,6 +3,8 @@ package com.veloop.rewards.withdrawal.entity;
 import com.veloop.rewards.payout.entity.PayoutMethod;
 import com.veloop.rewards.payout.entity.PayoutOption;
 import com.veloop.rewards.user.entity.User;
+import com.veloop.rewards.withdrawal.enums.WithdrawalStatus;
+
 import jakarta.persistence.*;
 
 import java.math.BigDecimal;
@@ -51,8 +53,9 @@ public class Withdrawal {
     @Column(name = "payout_details", columnDefinition = "TEXT")
     private String payoutDetails;
 
+    @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 30)
-    private String status;
+    private WithdrawalStatus status;
 
     @Column(name = "rejection_reason", length = 500)
     private String rejectionReason;
@@ -129,7 +132,7 @@ public class Withdrawal {
         return payoutDetails;
     }
 
-    public String getStatus() {
+    public WithdrawalStatus getStatus() {
         return status;
     }
 
@@ -197,7 +200,7 @@ public class Withdrawal {
         this.payoutDetails = payoutDetails;
     }
 
-    public void setStatus(String status) {
+    public void setStatus(WithdrawalStatus status) {
         this.status = status;
     }
 
