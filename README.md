@@ -1,16 +1,18 @@
 # VELoop Rewards — Wallet & Withdrawal Backend
 
-> ** Development Status: IN PROGRESS**
+> **Development Status:** IN PROGRESS
 >
 > A secure, backend-driven Wallet & Withdrawal system for VELoop Rewards, built incrementally with phase-based development checkpoints.
 >
-> **Current Checkpoint:** `V1-WALLET-CORE-COMPLETE`
-> **Current Phase:** Wallet Core completed and verified
-> **Next Phase:** Payout Configuration & Withdrawal System
+> **Current Checkpoint:** `V2-PAYOUT-CONFIGURATION-COMPLETE`
+>
+> **Current Phase:** Payout Configuration completed and verified
+>
+> **Next Phase:** Withdrawal System
 
 ---
 
-#  1. Project Overview
+# 1. Project Overview
 
 VELoop Rewards uses multiple internal reward currencies and redemption mechanisms.
 
@@ -53,7 +55,7 @@ in browser storage or frontend JavaScript must never change the actual wallet ba
 
 ---
 
-#  2. Project Objective
+# 2. Project Objective
 
 The final system should provide this high-level flow:
 
@@ -73,7 +75,7 @@ Wallet
  └── Withdrawal / Redeem
  │
  ▼
-Payout
+Payout Configuration
  │
  ├── Payout methods
  │
@@ -89,7 +91,7 @@ Withdrawal Request
  ├── Server-side validation
  ├── Balance validation
  ├── Idempotency
- ├── Wallet deduction / reservation
+ ├── Wallet deduction
  └── Ledger transaction
  │
  ▼
@@ -106,7 +108,7 @@ Every financially important operation must be controlled by the backend.
 
 ---
 
-#  3. Core Design Principle — Backend Is the Source of Truth
+# 3. Core Design Principle — Backend Is the Source of Truth
 
 The frontend is only an interface.
 
@@ -131,8 +133,8 @@ For example, the frontend may send:
 
 ```json
 {
-  "method": "upi",
-  "optionId": "upi_100"
+  "method": "UPI",
+  "optionId": 1
 }
 ```
 
@@ -140,7 +142,7 @@ The backend must look up the actual payout option and determine:
 
 ```text
 Payout value
-Required VEs
+Required VES
 Currency
 Availability
 Eligibility
@@ -223,15 +225,28 @@ and force the backend to trust that value.
 * Database indexing
 * Integration test suite
 
+### Payout Configuration
+
+* Payout method database
+* Payout option database
+* Payout method entity
+* Payout option entity
+* Payout repositories
+* Payout response DTOs
+* Payout configuration service
+* Active payout filtering
+* Active payout option filtering
+* Payout configuration REST API
+* Swagger/OpenAPI documentation
+* Payout configuration integration tests
+
 ---
 
-#  5. Current Checkpoint
+# 5. Current Checkpoint
 
-## `V1-WALLET-CORE-COMPLETE`
+## `V2-PAYOUT-CONFIGURATION-COMPLETE`
 
-This is the current verified project state.
-
-The checkpoint represents the completion of:
+The project has successfully completed:
 
 ```text
 Phase 1 — Project Setup
@@ -244,56 +259,67 @@ Phase 3.5 — OpenAPI / Swagger
         ↓
 Phase 4 — Wallet Core
         ↓
+V1-WALLET-CORE-COMPLETE
+        ↓
+Phase 5 — Payout Configuration
+        ↓
 CURRENT CHECKPOINT
 ```
 
 ### Checkpoint verification
 
-| Area                            | Status      |
-| ------------------------------- | ----------- |
-| Project setup                   | ✅ Completed |
-| Java 21                         | ✅ Verified  |
-| Spring Boot 3.5.16              | ✅ Verified  |
-| Maven build                     | ✅ Verified  |
-| MySQL                           | ✅ Completed |
-| Flyway                          | ✅ Completed |
-| Users migration                 | ✅ Completed |
-| User entity                     | ✅ Completed |
-| Registration                    | ✅ Completed |
-| Login                           | ✅ Completed |
-| JWT                             | ✅ Completed |
-| JWT filter                      | ✅ Completed |
-| SecurityContext                 | ✅ Completed |
-| Authentication                  | ✅ Completed |
-| Authorization                   | ✅ Completed |
-| Global exception handling       | ✅ Completed |
-| OpenAPI                         | ✅ Completed |
-| Swagger UI                      | ✅ Completed |
-| Wallet migration                | ✅ Completed |
-| Wallet entity                   | ✅ Completed |
-| Wallet repository               | ✅ Completed |
-| Automatic wallet creation       | ✅ Completed |
-| Wallet retrieval                | ✅ Completed |
-| Wallet credit                   | ✅ Completed |
-| Wallet debit                    | ✅ Completed |
-| Balance validation              | ✅ Completed |
-| Insufficient balance protection | ✅ Completed |
-| Multi-currency support          | ✅ Completed |
-| Wallet ledger                   | ✅ Completed |
-| Transaction history             | ✅ Completed |
-| Pagination                      | ✅ Completed |
-| Wallet summary                  | ✅ Completed |
-| User isolation                  | ✅ Verified  |
-| JWT wallet isolation            | ✅ Verified  |
-| Admin wallet authorization      | ✅ Verified  |
-| Atomicity                       | ✅ Verified  |
-| Optimistic locking              | ✅ Verified  |
-| Concurrent debit protection     | ✅ Verified  |
-| Ledger consistency              | ✅ Verified  |
+| Area                            | Status              |
+| ------------------------------- | ------------------- |
+| Project setup                   | ✅ Completed         |
+| Java 21                         | ✅ Verified          |
+| Spring Boot 3.5.16              | ✅ Verified          |
+| Maven build                     | ✅ Verified          |
+| MySQL                           | ✅ Completed         |
+| Flyway                          | ✅ Completed         |
+| Users migration                 | ✅ Completed         |
+| User entity                     | ✅ Completed         |
+| Registration                    | ✅ Completed         |
+| Login                           | ✅ Completed         |
+| JWT                             | ✅ Completed         |
+| JWT filter                      | ✅ Completed         |
+| SecurityContext                 | ✅ Completed         |
+| Authentication                  | ✅ Completed         |
+| Authorization                   | ✅ Completed         |
+| Global exception handling       | ✅ Completed         |
+| OpenAPI                         | ✅ Completed         |
+| Swagger UI                      | ✅ Completed         |
+| Wallet migration                | ✅ Completed         |
+| Wallet entity                   | ✅ Completed         |
+| Wallet repository               | ✅ Completed         |
+| Automatic wallet creation       | ✅ Completed         |
+| Wallet retrieval                | ✅ Completed         |
+| Wallet credit                   | ✅ Completed         |
+| Wallet debit                    | ✅ Completed         |
+| Balance validation              | ✅ Completed         |
+| Insufficient balance protection | ✅ Completed         |
+| Multi-currency support          | ✅ Completed         |
+| Wallet ledger                   | ✅ Completed         |
+| Transaction history             | ✅ Completed         |
+| Pagination                      | ✅ Completed         |
+| Wallet summary                  | ✅ Completed         |
+| User isolation                  | ✅ Verified          |
+| JWT wallet isolation            | ✅ Verified          |
+| Admin wallet authorization      | ✅ Verified          |
+| Atomicity                       | ✅ Verified          |
+| Optimistic locking              | ✅ Verified          |
+| Concurrent debit protection     | ✅ Verified          |
+| Ledger consistency              | ✅ Verified          |
+| Payout methods                  | ✅ Completed         |
+| Payout options                  | ✅ Completed         |
+| Payout configuration service    | ✅ Completed         |
+| Payout configuration API        | ✅ Completed         |
+| Payout API authentication       | ✅ Verified          |
+| Payout configuration tests      | ✅ Verified          |
+| Full regression suite           | ✅ **38/38 passing** |
 
 ---
 
-#  6. Technology Stack
+# 6. Technology Stack
 
 ## Backend
 
@@ -335,7 +361,7 @@ Planned:
 
 ---
 
-#  7. Current Architecture
+# 7. Current Architecture
 
 ```text
                          React + Vite
@@ -346,30 +372,29 @@ Planned:
                     │   Spring Boot API   │
                     └──────────┬──────────┘
                                │
-                ┌──────────────┴──────────────┐
-                │                             │
-                ▼                             ▼
-        Spring Security                 Controllers
-                │                             │
-                ▼                             ▼
-          JWT Filter                       Services
-                                              │
-                                              ▼
-                                         Repositories
-                                              │
-                                              ▼
-                                      Spring Data JPA
-                                              │
-                                              ▼
-                                           MySQL
-                                              ▲
-                                              │
-                                           Flyway
+                ┌──────────────┼──────────────┐
+                │              │              │
+                ▼              ▼              ▼
+             Auth           Wallet          Payout
+                │              │              │
+                ▼              ▼              ▼
+             User          Ledger       Configuration
+                               │              │
+                               │              │
+                               └──────┬───────┘
+                                      ▼
+                               Spring Data JPA
+                                      │
+                                      ▼
+                                    MySQL
+                                      ▲
+                                      │
+                                    Flyway
 ```
 
 ---
 
-#  8. Current Package Architecture
+# 8. Current Package Architecture
 
 ```text
 src/main/java/com/veloop/rewards/
@@ -408,11 +433,18 @@ src/main/java/com/veloop/rewards/
 │
 ├── payout/
 │   ├── controller/
+│   │   └── PayoutConfigurationController.java
 │   ├── service/
+│   │   └── PayoutConfigurationService.java
 │   ├── repository/
+│   │   ├── PayoutMethodRepository.java
+│   │   └── PayoutOptionRepository.java
 │   ├── entity/
-│   ├── dto/
-│   └── enums/
+│   │   ├── PayoutMethod.java
+│   │   └── PayoutOption.java
+│   └── dto/
+│       ├── PayoutMethodResponse.java
+│       └── PayoutOptionResponse.java
 │
 ├── withdrawal/
 │   ├── controller/
@@ -441,7 +473,7 @@ src/main/java/com/veloop/rewards/
 
 ---
 
-#  9. Wallet Core
+# 9. Wallet Core
 
 ## Supported currencies
 
@@ -470,11 +502,11 @@ Wallet
 └── version
 ```
 
-`BigDecimal` is used for currency values rather than floating-point types.
+`BigDecimal` is used for monetary/reward values rather than floating-point types.
 
 ---
 
-#  10. Wallet Database Design
+# 10. Wallet Database Design
 
 Migration:
 
@@ -514,7 +546,7 @@ This protects wallet updates against concurrent modifications.
 
 ---
 
-#  11. Wallet Ledger
+# 11. Wallet Ledger
 
 Migration:
 
@@ -571,7 +603,7 @@ Status:         COMPLETED
 
 ---
 
-#  12. Transaction Types
+# 12. Transaction Types
 
 ## Credit
 
@@ -608,7 +640,7 @@ These types allow the wallet to later support:
 
 ---
 
-#  13. Wallet Operations
+# 13. Wallet Operations
 
 ## Credit
 
@@ -656,7 +688,7 @@ If a critical operation fails, the transaction is rolled back.
 
 ---
 
-#  14. Wallet Security
+# 14. Wallet Security
 
 ## JWT Identity
 
@@ -708,7 +740,7 @@ Normal users receive:
 
 ---
 
-#  15. Balance Validation
+# 15. Balance Validation
 
 Every debit validates the balance on the backend.
 
@@ -733,7 +765,7 @@ Negative balances are not allowed.
 
 ---
 
-#  16. Atomicity & Concurrency
+# 16. Atomicity & Concurrency
 
 Wallet update and ledger creation are transactional.
 
@@ -766,7 +798,7 @@ Optimistic locking prevents the lost-update scenario.
 
 ---
 
-#  17. Wallet APIs
+# 17. Wallet APIs
 
 ## Get Wallet
 
@@ -845,7 +877,7 @@ ADMIN
 
 ---
 
-#  18. Transaction Pagination
+# 18. Transaction Pagination
 
 Wallet transactions use a stable backend response:
 
@@ -865,7 +897,7 @@ The API limits the requested page size to prevent unnecessarily large responses.
 
 ---
 
-#  19. Wallet Summary
+# 19. Wallet Summary
 
 The wallet summary contains:
 
@@ -882,7 +914,7 @@ The summary is generated from backend wallet data and transaction records.
 
 ---
 
-#  20. Wallet Test Coverage
+# 20. Wallet Test Coverage
 
 The Wallet Core has been tested through integration and API tests.
 
@@ -974,90 +1006,239 @@ WalletConsistencyIntegrationTest
 1/1 PASS
 ```
 
-### Current Wallet Test Result
+---
+
+# 21. Payout Configuration
+
+Payout configuration is now implemented as a backend-controlled configuration layer.
+
+The database contains:
 
 ```text
+payout_methods
+        │
+        │ 1 : N
+        ▼
+payout_options
+```
+
+This allows payout methods and denominations to be managed independently of frontend code.
+
+---
+
+# 22. Payout Database Design
+
+Migration:
+
+```text
+V4__create_payout_configuration.sql
+```
+
+Tables:
+
+```text
+payout_methods
+payout_options
+```
+
+## Payout Method
+
+```text
+PayoutMethod
+├── id
+├── code
+├── name
+├── active
+├── createdAt
+└── updatedAt
+```
+
+The payout method code is unique.
+
+## Payout Option
+
+```text
+PayoutOption
+├── id
+├── method
+├── payoutAmount
+├── currency
+├── currencyAmount
+├── active
+├── createdAt
+└── updatedAt
+```
+
+The `method` field references `payout_methods`.
+
+---
+
+# 23. Current Payout Configuration
+
+The current development database contains:
+
+```text
+UPI                    ACTIVE
+AMAZON_GIFT_CARD       ACTIVE
+GOOGLE_PLAY_GIFT_CARD  ACTIVE
+PAYPAL                 INACTIVE
+```
+
+The backend API exposes only active methods.
+
+Currently configured UPI options:
+
+| Payout Amount | Currency | Required VES |
+| ------------: | :------: | -----------: |
+|           ₹10 |    INR   |        2,400 |
+|           ₹25 |    INR   |        5,800 |
+|           ₹50 |    INR   |       10,000 |
+|          ₹100 |    INR   |       19,500 |
+|          ₹150 |    INR   |       28,500 |
+|          ₹300 |    INR   |       52,500 |
+|          ₹500 |    INR   |       80,500 |
+|        ₹1,000 |    INR   |      150,000 |
+
+These values are stored in the backend database and are not hardcoded into the frontend.
+
+---
+
+# 24. Payout Configuration API
+
+## Get Payout Configuration
+
+```http
+GET /api/payouts/configuration
+```
+
+Authentication:
+
+```text
+Bearer JWT
+```
+
+Returns:
+
+* Active payout methods
+* Active payout options
+* Payout amount
+* Currency
+* Required currency amount
+
+Conceptual response:
+
+```json
+{
+  "success": true,
+  "message": "Payout configuration retrieved successfully",
+  "data": [
+    {
+      "id": 1,
+      "code": "UPI",
+      "name": "UPI",
+      "options": [
+        {
+          "id": 1,
+          "payoutAmount": 10,
+          "currency": "INR",
+          "currencyAmount": 2400
+        }
+      ]
+    }
+  ]
+}
+```
+
+Inactive payout methods are excluded from the response.
+
+---
+
+# 25. Payout Configuration Security
+
+The payout configuration endpoint requires authentication.
+
+```text
+Valid JWT
+    ↓
+200 OK
+```
+
+Without JWT:
+
+```text
+401 Unauthorized
+```
+
+The endpoint is read-only.
+
+The client cannot modify payout configuration through this API.
+
+---
+
+# 26. Payout Configuration Test Coverage
+
+Integration tests are implemented in:
+
+```text
+PayoutConfigurationApiIntegrationTest
+```
+
+Current coverage:
+
+```text
+5/5 PASS
+```
+
+Verified:
+
+* Authenticated access
+* Active payout methods
+* UPI configuration
+* All 8 UPI options
+* Correct payout amounts
+* Correct required VES values
+* Ascending payout option order
+* Inactive PayPal exclusion
+* Unauthorized request rejection
+
+---
+
+# 27. Current Full Test Status
+
+The complete regression suite currently passes:
+
+```text
+Tests run: 38
 Failures: 0
-Errors:   0
+Errors: 0
+Skipped: 0
+
+BUILD SUCCESS
 ```
 
----
-
-#  21. Remaining Project Requirements
-
-The following requirements are intentionally **not marked complete yet**.
-
-They belong to the next development phases.
-
-## Phase 5 — Payout Configuration
-
-Implement:
-
-* Payout methods
-* Payout options
-* Voucher/denomination configuration
-* Backend-controlled payout values
-* Required currency
-* Required balance
-* Availability
-* Eligibility
-* Active/inactive status
-* Payout configuration database
-* Payout APIs
-
----
-
-#  22. Configured Payout Values
-
-The project specification provides the following reference values:
-
-| Payout | Required VEs |
-| -----: | -----------: |
-|    ₹10 |        2,400 |
-|    ₹25 |        5,800 |
-|    ₹50 |       10,000 |
-|   ₹100 |       19,500 |
-|   ₹150 |       28,500 |
-|   ₹300 |       52,500 |
-|   ₹500 |       80,500 |
-| ₹1,000 |      150,000 |
-
-These values must be stored/configured in the backend.
-
-They must **not** be hardcoded into React.
-
-If the actual current Payout UI has a different configuration, the current platform configuration should be treated as the reference.
-
----
-
-#  23. Payout Methods
-
-The project documentation references:
+Breakdown:
 
 ```text
-UPI
-PayPal
-Amazon Gift Cards
-Google Play Gift Cards
+Wallet Core tests
+33/33 PASS
+
+Payout Configuration tests
+5/5 PASS
+
+-------------------------
+Total
+38/38 PASS
 ```
 
-The actual current VELoop Payout UI must be inspected before finalizing which methods are active.
-
-The backend will control:
-
-```text
-method
-availability
-options
-eligibility
-required details
-```
+This is the current verified baseline for further development.
 
 ---
 
-#  24. Phase 6 — Withdrawal System
+# 28. Phase 6 — Withdrawal System
 
-The Withdrawal module will implement:
+The next development phase is the Withdrawal module.
+
+The expected withdrawal model will contain:
 
 ```text
 Withdrawal
@@ -1078,9 +1259,13 @@ Withdrawal
 └── updatedAt
 ```
 
+The implementation will validate all payout configuration server-side.
+
+The frontend will send an option identifier, while the backend will resolve the actual payout values from the database.
+
 ---
 
-#  25. Withdrawal Status
+# 29. Withdrawal Status
 
 Required statuses:
 
@@ -1112,46 +1297,50 @@ REJECTED
 
 ---
 
-#  26. Wallet Deduction Strategy
+# 30. Withdrawal Wallet Deduction Strategy
 
-The project allows two approaches:
+The planned strategy is **immediate deduction at withdrawal creation**.
 
-### Option A
-
-Deduct immediately:
+Example:
 
 ```text
-Available VEs
-10,000
+Available balance: 10,000 VES
 
-Withdrawal
-2,400
+Withdrawal:
+2,400 VES
 
-Available
-7,600
+Remaining balance:
+7,600 VES
 ```
 
-If rejected, reverse the deduction.
+The withdrawal creation and wallet deduction must be part of the same logical operation.
 
-### Option B
+If the withdrawal is later rejected:
 
-Reserve/hold the balance until processing.
+```text
+Withdrawal REJECTED
+        ↓
+Reverse wallet deduction
+        ↓
+Create reversal ledger entry
+```
 
-The implementation must select one approach and use it consistently.
-
-**Planned implementation:** immediate deduction at withdrawal creation, with ledger reversal if the withdrawal is rejected.
-
-This decision will be formally implemented and tested during the Withdrawal phase.
+This strategy will be implemented and tested in the Withdrawal phase.
 
 ---
 
-#  27. Idempotency
+# 31. Idempotency
 
-The system must prevent:
+The withdrawal system must prevent duplicate requests such as:
 
 ```text
-Redeem
-Redeem
+User clicks Redeem
+        ↓
+Request 1
+
+User clicks Redeem again
+        ↓
+Request 2
 ```
 
 from creating:
@@ -1161,11 +1350,30 @@ from creating:
 2 wallet deductions
 ```
 
-The future implementation will use an idempotency strategy for withdrawal requests.
+The future implementation will use an idempotency mechanism to guarantee safe retry behavior.
 
 ---
 
-#  28. Audit Logging
+# 32. Withdrawal Concurrency
+
+The withdrawal system must also handle concurrent requests.
+
+Example:
+
+```text
+Available = 10,000 VES
+
+Request A → 8,000 VES
+Request B → 8,000 VES
+```
+
+Only one request should be able to consume the available balance.
+
+The existing wallet optimistic-locking mechanism will be integrated into the withdrawal flow.
+
+---
+
+# 33. Audit Logging
 
 Sensitive operations will eventually be auditable.
 
@@ -1194,22 +1402,24 @@ IP/session information where appropriate
 createdAt
 ```
 
+Audit implementation belongs to the security-hardening phase.
+
 ---
 
-#  29. Rate Limiting
+# 34. Rate Limiting
 
 Sensitive APIs should eventually receive rate limiting protection, particularly:
 
+* Authentication
 * Wallet mutations
 * Withdrawal
-* Authentication
 * OTP/authentication-related endpoints
 
-Rate limiting is a future hardening phase.
+Rate limiting is planned for the security-hardening phase.
 
 ---
 
-#  30. Fraud & Security Checks
+# 35. Fraud & Security Checks
 
 Future withdrawal processing must support reasonable security controls including:
 
@@ -1222,11 +1432,13 @@ Future withdrawal processing must support reasonable security controls including
 * Withdrawal validation
 * Audit logging
 
+These controls will be introduced incrementally.
+
 ---
 
-#  31. Planned Frontend
+# 36. Planned Frontend
 
-A small React/Vite frontend is required to demonstrate the backend.
+A small React/Vite frontend will demonstrate the backend.
 
 Required routes:
 
@@ -1241,27 +1453,25 @@ Optional:
 /login
 ```
 
-The frontend must:
+## Wallet
 
-### Wallet
+The frontend should:
 
 * Fetch wallet from backend
 * Display balances
 * Display transactions
 * Provide withdrawal/redeem action
-* Navigate to Payout
+* Navigate to payout
 * Show loading state
 * Show error state
 * Refresh after successful operations
 
-### Payout
+## Payout
 
 ```text
 Fetch methods
       ↓
 Select method
-      ↓
-Fetch options
       ↓
 Select option
       ↓
@@ -1276,7 +1486,7 @@ The frontend must not contain financial business logic.
 
 ---
 
-#  32. API Documentation
+# 37. API Documentation
 
 The project will contain:
 
@@ -1294,26 +1504,32 @@ It will document:
 * Errors
 * Examples
 
-Major planned endpoints include:
+Current major APIs:
 
 ```text
 GET  /api/wallet
 GET  /api/wallet/transactions
 GET  /api/wallet/summary
 
-GET  /api/payout/methods
-GET  /api/payout/options/{method}
+POST /api/wallet/credit
+POST /api/wallet/debit
 
+GET  /api/payouts/configuration
+```
+
+Planned withdrawal APIs:
+
+```text
 POST /api/withdrawals
 GET  /api/withdrawals
 GET  /api/withdrawals/{id}
 ```
 
-Wallet APIs are already implemented and documented through OpenAPI/Swagger.
+Swagger/OpenAPI is already configured for the existing APIs.
 
 ---
 
-#  33. Database Migrations
+# 38. Database Migrations
 
 Current migrations:
 
@@ -1322,13 +1538,13 @@ src/main/resources/db/migration/
 │
 ├── V1__create_users.sql
 ├── V2__create_wallets.sql
-└── V3__create_wallet_transactions.sql
+├── V3__create_wallet_transactions.sql
+└── V4__create_payout_configuration.sql
 ```
 
 Future migrations will add:
 
 ```text
-Payout
 Withdrawal
 Idempotency
 Audit
@@ -1338,7 +1554,7 @@ as those modules are implemented.
 
 ---
 
-#  34. Environment & Security
+# 39. Environment & Security
 
 Sensitive values must never be committed.
 
@@ -1365,7 +1581,7 @@ The development system must use its own local/development database.
 
 ---
 
-#  35. Production Access Restriction
+# 40. Production Access Restriction
 
 This project must not connect to VELoop production databases or production services.
 
@@ -1383,7 +1599,7 @@ Production integration, if required, must be performed later by authorized VELoo
 
 ---
 
-#  36. Scalability Requirement
+# 41. Scalability Requirement
 
 The final README must answer:
 
@@ -1409,7 +1625,7 @@ This section will be expanded after the core system is complete.
 
 ---
 
-#  37. Final Testing Requirements
+# 42. Final Testing Requirements
 
 The final system must demonstrate at least:
 
@@ -1425,21 +1641,31 @@ The final system must demonstrate at least:
 9. Frontend/API manipulation
 ```
 
-Currently completed at Wallet Core level:
+Currently verified:
 
 ```text
 1. Normal credit                 ✅
 3. Insufficient balance         ✅
-5. Concurrent balance updates  ✅
-7. Another user's wallet       ✅
-9. Wallet API manipulation     ✅
+5. Concurrent wallet updates    ✅
+7. Another user's wallet        ✅
+9. Wallet API manipulation      ✅
 ```
 
-Withdrawal-specific tests will be completed with the Withdrawal module.
+Payout configuration testing:
+
+```text
+Active methods                  ✅
+Inactive methods excluded       ✅
+Payout option validation data   ✅
+Required VES configuration      ✅
+Authenticated API access        ✅
+```
+
+Withdrawal-specific scenarios will be implemented during Phases 6 and 7.
 
 ---
 
-#  38. Development Roadmap
+# 43. Development Roadmap
 
 ```text
 PHASE 1
@@ -1457,10 +1683,12 @@ OpenAPI / Swagger
 PHASE 4
 Wallet Core
         ↓
- V1-WALLET-CORE-COMPLETE
+V1-WALLET-CORE-COMPLETE
         ↓
 PHASE 5
 Payout Configuration
+        ↓
+V2-PAYOUT-CONFIGURATION-COMPLETE
         ↓
 PHASE 6
 Withdrawal System
@@ -1483,64 +1711,70 @@ Deployment / Demonstration
 
 ---
 
-# ▶ 39. Where to Start When Continuing Development
+# 44. Where to Start When Continuing Development
 
 **Do not restart from project setup.**
 
-The current project is already at:
+The current project is at:
 
 ```text
-V1-WALLET-CORE-COMPLETE
+V2-PAYOUT-CONFIGURATION-COMPLETE
 ```
 
-The next developer should first verify:
+Before continuing development, verify:
 
-```text
+```cmd
 mvnw clean test
 ```
 
-Then inspect the existing:
+Expected:
 
 ```text
-wallet/
+Tests run: 38
+Failures: 0
+Errors: 0
+Skipped: 0
+
+BUILD SUCCESS
 ```
 
-implementation and migrations:
+The existing Wallet Core and Payout Configuration implementations should be treated as frozen baselines.
+
+### Next implementation
 
 ```text
-V2__create_wallets.sql
-V3__create_wallet_transactions.sql
-```
-
-The next implementation should begin with:
-
-```text
-PHASE 5 — PAYOUT CONFIGURATION
+PHASE 6 — WITHDRAWAL SYSTEM
 ```
 
 Start with:
 
 ```text
-Payout database design
+Withdrawal database design
         ↓
-Payout migration
+Withdrawal migration
         ↓
-Payout entities
+Withdrawal entity
         ↓
-Payout repository
+Withdrawal enums
         ↓
-Payout configuration service
+Withdrawal repository
         ↓
-Payout API
+Withdrawal DTOs
         ↓
-Payout tests
+Withdrawal service
+        ↓
+Wallet deduction integration
+        ↓
+Withdrawal API
+        ↓
+Withdrawal tests
 ```
 
-Do **not** implement Withdrawal before the Payout configuration layer is established.
+Do not implement idempotency or advanced withdrawal concurrency infrastructure before the basic Withdrawal flow is established. Those concerns belong to Phase 7.
 
 ---
 
-#  40. Expected Final Repository Structure
+# 45. Expected Final Repository Structure
 
 ```text
 veloop-rewards-backend/
@@ -1568,15 +1802,13 @@ veloop-rewards-backend/
 
 ---
 
-#  41. Final Submission Checklist
+# 46. Final Submission Checklist
 
-Before final submission:
+## Backend
 
-### Backend
-
-* [ ] Wallet completely backend-driven
-* [x] VEs server-authoritative
-* [x] SVEs server-authoritative
+* [x] Wallet completely backend-driven
+* [x] VES server-authoritative
+* [x] SVES server-authoritative
 * [x] Gems server-authoritative
 * [x] Tokens server-authoritative
 * [x] Spins server-authoritative
@@ -1584,8 +1816,8 @@ Before final submission:
 * [x] Credits create ledger records
 * [x] Debits create ledger records
 * [ ] Withdrawal requests stored
-* [ ] Payout options come from backend
-* [ ] Payout values controlled by backend
+* [x] Payout options come from backend
+* [x] Payout values controlled by backend
 * [x] Insufficient balance rejected
 * [ ] Duplicate withdrawal prevented
 * [x] Concurrent wallet balance updates handled safely
@@ -1596,7 +1828,20 @@ Before final submission:
 * [ ] Rate limiting fully implemented
 * [ ] Audit logging implemented
 
-### Frontend
+## Payout Configuration
+
+* [x] Payout method table
+* [x] Payout option table
+* [x] Payout method entity
+* [x] Payout option entity
+* [x] Payout repositories
+* [x] Payout DTOs
+* [x] Payout configuration service
+* [x] Payout configuration API
+* [x] Active/inactive filtering
+* [x] Payout configuration tests
+
+## Frontend
 
 * [ ] `/wallet`
 * [ ] `/payout`
@@ -1606,23 +1851,28 @@ Before final submission:
 * [ ] Error states
 * [ ] Wallet refresh after withdrawal
 
-### Documentation
+## Documentation
 
-* [ ] README complete
-* [ ] API documentation complete
+* [x] README development status
+* [x] Architecture documentation
+* [x] Current API documentation through OpenAPI/Swagger
+* [ ] API_DOCUMENTATION.md complete
 * [ ] Database/model documentation
-* [ ] Test cases/results
-* [ ] Architecture explanation
+* [x] Current test results documented
 * [ ] Postman collection
 
-### Security
+## Security
 
 * [x] `.env` excluded
 * [x] `.env.example` provided
-* [ ] No production credentials
-* [ ] No production database connection
+* [x] No production credentials
+* [x] No production database connection
+* [ ] Rate limiting
+* [ ] Audit logging
+* [ ] Withdrawal idempotency
+* [ ] Withdrawal fraud/security checks
 
-### Delivery
+## Delivery
 
 * [ ] GitHub repository
 * [ ] Live frontend
@@ -1632,10 +1882,10 @@ Before final submission:
 
 ---
 
-#  CURRENT CHECKPOINT
+# 47. Current Checkpoint
 
 ```text
-V1-WALLET-CORE-COMPLETE
+V2-PAYOUT-CONFIGURATION-COMPLETE
 ```
 
 ### Verified state
@@ -1646,6 +1896,8 @@ Authentication
 JWT
         ✅
 Authorization
+        ✅
+OpenAPI / Swagger
         ✅
         │
         ▼
@@ -1673,9 +1925,23 @@ API Security
         ✅
         │
         ▼
-NEXT
 Payout Configuration
-        
+        ✅
+Payout Methods
+        ✅
+Payout Options
+        ✅
+Payout API
+        ✅
+Payout Tests
+        ✅
+        │
+        ▼
+38/38 TESTS PASSING
+        │
+        ▼
+NEXT
+Withdrawal System
 ```
 
-**The project should continue from `PHASE 5 — PAYOUT CONFIGURATION`; previously completed Wallet Core work should not be rebuilt.**
+**The project should continue from `PHASE 6 — WITHDRAWAL SYSTEM`. Previously completed Wallet Core and Payout Configuration work should not be rebuilt.**
