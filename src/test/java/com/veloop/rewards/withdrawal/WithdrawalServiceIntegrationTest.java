@@ -30,6 +30,10 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.transaction.annotation.Transactional;
+import com.veloop.rewards.common.exception.IdempotencyConflictException;
+import com.veloop.rewards.common.exception.IdempotencyKeyRequiredException;
+import com.veloop.rewards.idempotency.entity.WithdrawalIdempotency;
+import com.veloop.rewards.idempotency.repository.WithdrawalIdempotencyRepository;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -63,6 +67,9 @@ class WithdrawalServiceIntegrationTest {
 
         @Autowired
         private PayoutOptionRepository payoutOptionRepository;
+
+        @Autowired
+        private WithdrawalIdempotencyRepository withdrawalIdempotencyRepository;
 
         private Long testUserId;
         private Long secondUserId;
@@ -576,5 +583,145 @@ class WithdrawalServiceIntegrationTest {
 
         private String uniqueIdempotencyKey() {
                 return "withdrawal-test-" + System.nanoTime();
+        }
+
+        @Test
+        void shouldReturnSameWithdrawalForSameIdempotencyKeyAndSameRequest() {
+
+                creditVes(testUserId, "10000");
+
+                String idempotencyKey = "same-request-" + System.nanoTime();
+
+                WithdrawalCreateRequest request = createRequest(
+                                upiMethod.getId(),
+                                tenRupeeOption.getId(),
+                                "test@upi");
+
+                WithdrawalResponse first = withdrawalService.createWithdrawal(
+                                testUserId,
+                                idempotencyKey,
+                                request);
+
+                WithdrawalResponse second = withdrawalService.createWithdrawal(
+                                testUserId,
+                                idempotencyKey,
+                                request);
+
+                assertEquals(
+                                first.getWithdrawalId(),
+                                second.getWithdrawalId());
+
+                assertEquals(
+                                WithdrawalStatus.PENDING.name(),
+                                second.getStatus());
+
+                Wallet wallet = walletRepository.findByUserId(testUserId)
+                                .orElseThrow();
+
+                assertEquals(
+                                0,
+                                wallet.getVes()
+                                                .compareTo(new BigDecimal("7600")));
+
+                assertEquals(
+                                1,
+                                withdrawalRepository
+                                                .findByUserIdOrderByCreatedAtDesc(
+                                                                testUserId,
+                                                                org.springframework.data.domain.PageRequest.of(
+                                                                                0,
+                                                                                20))
+                                                .getTotalElements());
+
+                assertEquals(
+                                1,
+                                withdrawalIdempotencyRepository
+                                                .findByUserIdAndIdempotencyKey(
+                                                                testUserId,
+                                                                idempotencyKey)
+                                                .stream()
+                                                .count());
+        }
+
+        @Test
+        void shouldRejectSameIdempotencyKeyWithDifferentRequest() {
+
+                creditVes(testUserId, "20000");
+
+                String idempotencyKey = "different-request-" + System.nanoTime();
+
+                WithdrawalCreateRequest firstRequest = createRequest(
+                                upiMethod.getId(),
+                                tenRupeeOption.getId(),
+                                "first@upi");
+
+                withdrawalService.createWithdrawal(
+                                testUserId,
+                                idempotencyKey,
+                                firstRequest);
+
+                WithdrawalCreateRequest secondRequest = createRequest(
+                                upiMethod.getId(),
+                                tenRupeeOption.getId(),
+                                "second@upi");
+
+                assertThrows(
+                                IdempotencyConflictException.class,
+                                () -> withdrawalService.createWithdrawal(
+                                                testUserId,
+                                                idempotencyKey,
+                                                secondRequest));
+
+                Wallet wallet = walletRepository.findByUserId(testUserId)
+                                .orElseThrow();
+
+                assertEquals(
+                                0,
+                                wallet.getVes()
+                                                .compareTo(new BigDecimal("17600")));
+
+                assertEquals(
+                                1,
+                                withdrawalRepository
+                                                .findByUserIdOrderByCreatedAtDesc(
+                                                                testUserId,
+                                                                org.springframework.data.domain.PageRequest.of(
+                                                                                0,
+                                                                                20))
+                                                .getTotalElements());
+        }
+
+        @Test
+        void shouldRejectWithdrawalWhenIdempotencyKeyIsMissing() {
+
+                creditVes(testUserId, "10000");
+
+                assertThrows(
+                                IdempotencyKeyRequiredException.class,
+                                () -> withdrawalService.createWithdrawal(
+                                                testUserId,
+                                                null,
+                                                createRequest(
+                                                                upiMethod.getId(),
+                                                                tenRupeeOption.getId(),
+                                                                "test@upi")));
+
+                Wallet wallet = walletRepository.findByUserId(testUserId)
+                                .orElseThrow();
+
+                assertEquals(
+                                0,
+                                wallet.getVes()
+                                                .compareTo(new BigDecimal("10000")));
+
+                assertEquals(
+                                0,
+                                withdrawalRepository
+                                                .findByUserIdOrderByCreatedAtDesc(
+                                                                testUserId,
+                                                                org.springframework.data.domain.PageRequest.of(
+                                                                                0,
+                                                                                20))
+                                                .getTotalElements());
         }
 }
