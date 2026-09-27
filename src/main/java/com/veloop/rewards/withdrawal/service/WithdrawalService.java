@@ -1,5 +1,6 @@
 package com.veloop.rewards.withdrawal.service;
 
+import com.veloop.rewards.audit.service.WithdrawalAuditService;
 import com.veloop.rewards.common.exception.InvalidWithdrawalRequestException;
 import com.veloop.rewards.common.exception.InvalidWithdrawalStateException;
 import com.veloop.rewards.common.exception.WithdrawalConcurrencyException;
@@ -46,23 +47,26 @@ public class WithdrawalService {
         private final WalletTransactionRepository walletTransactionRepository;
         private final UserRepository userRepository;
         private final WithdrawalIdempotencyService withdrawalIdempotencyService;
+        private final WithdrawalAuditService withdrawalAuditService;
 
         public WithdrawalService(
                         WithdrawalRepository withdrawalRepository,
-                        PayoutMethodRepository payoutMethodRepository,
-                        PayoutOptionRepository payoutOptionRepository,
+                        WithdrawalIdempotencyService withdrawalIdempotencyService,
                         WalletService walletService,
                         WalletTransactionRepository walletTransactionRepository,
                         UserRepository userRepository,
-                        WithdrawalIdempotencyService withdrawalIdempotencyService) {
+                        PayoutMethodRepository payoutMethodRepository,
+                        PayoutOptionRepository payoutOptionRepository,
+                        WithdrawalAuditService withdrawalAuditService) {
 
                 this.withdrawalRepository = withdrawalRepository;
-                this.payoutMethodRepository = payoutMethodRepository;
-                this.payoutOptionRepository = payoutOptionRepository;
+                this.withdrawalIdempotencyService = withdrawalIdempotencyService;
                 this.walletService = walletService;
                 this.walletTransactionRepository = walletTransactionRepository;
                 this.userRepository = userRepository;
-                this.withdrawalIdempotencyService = withdrawalIdempotencyService;
+                this.payoutMethodRepository = payoutMethodRepository;
+                this.payoutOptionRepository = payoutOptionRepository;
+                this.withdrawalAuditService = withdrawalAuditService;
         }
 
         @Transactional
@@ -181,6 +185,14 @@ public class WithdrawalService {
 
                 Withdrawal savedWithdrawal = withdrawalRepository.save(withdrawal);
 
+                withdrawalAuditService.record(
+                                savedWithdrawal,
+                                "CREATED",
+                                null,
+                                WithdrawalStatus.PENDING,
+                                user,
+                                "Withdrawal created");
+
                 withdrawalIdempotencyService.createRecord(
                                 user,
                                 normalizedIdempotencyKey,
@@ -242,14 +254,25 @@ public class WithdrawalService {
                                         "Only PENDING withdrawals can be moved to PROCESSING");
                 }
 
+                WithdrawalStatus oldStatus = withdrawal.getStatus();
+
                 withdrawal.setStatus(
                                 WithdrawalStatus.PROCESSING);
 
                 withdrawal.setUpdatedAt(
                                 LocalDateTime.now());
 
-                return toResponse(
-                                withdrawalRepository.save(withdrawal));
+                Withdrawal savedWithdrawal = withdrawalRepository.save(withdrawal);
+
+                withdrawalAuditService.record(
+                                savedWithdrawal,
+                                "PROCESSING",
+                                oldStatus,
+                                WithdrawalStatus.PROCESSING,
+                                null,
+                                "Withdrawal moved to processing");
+
+                return toResponse(savedWithdrawal);
         }
 
         @Transactional
@@ -268,6 +291,8 @@ public class WithdrawalService {
                                         "Only PENDING or PROCESSING withdrawals can be approved");
                 }
 
+                WithdrawalStatus oldStatus = withdrawal.getStatus();
+
                 LocalDateTime now = LocalDateTime.now();
 
                 withdrawal.setStatus(
@@ -276,8 +301,17 @@ public class WithdrawalService {
                 withdrawal.setProcessedAt(now);
                 withdrawal.setUpdatedAt(now);
 
-                return toResponse(
-                                withdrawalRepository.save(withdrawal));
+                Withdrawal savedWithdrawal = withdrawalRepository.save(withdrawal);
+
+                withdrawalAuditService.record(
+                                savedWithdrawal,
+                                "APPROVED",
+                                oldStatus,
+                                WithdrawalStatus.APPROVED,
+                                null,
+                                "Withdrawal approved");
+
+                return toResponse(savedWithdrawal);
         }
 
         @Transactional
@@ -341,6 +375,7 @@ public class WithdrawalService {
                 walletService.creditWallet(
                                 withdrawal.getUser().getId(),
                                 reversalRequest);
+                WithdrawalStatus oldStatus = withdrawal.getStatus();
 
                 LocalDateTime now = LocalDateTime.now();
 
@@ -357,6 +392,14 @@ public class WithdrawalService {
                 withdrawal.setUpdatedAt(now);
 
                 Withdrawal savedWithdrawal = withdrawalRepository.save(withdrawal);
+
+                withdrawalAuditService.record(
+                                savedWithdrawal,
+                                "REJECTED",
+                                oldStatus,
+                                WithdrawalStatus.REJECTED,
+                                null,
+                                "Withdrawal rejected: " + cleanRejectionReason);
 
                 return toResponse(savedWithdrawal);
         }
@@ -411,6 +454,8 @@ public class WithdrawalService {
                                 userId,
                                 reversalRequest);
 
+                WithdrawalStatus oldStatus = withdrawal.getStatus();
+
                 LocalDateTime now = LocalDateTime.now();
 
                 withdrawal.setStatus(
@@ -420,6 +465,14 @@ public class WithdrawalService {
                 withdrawal.setUpdatedAt(now);
 
                 Withdrawal savedWithdrawal = withdrawalRepository.save(withdrawal);
+
+                withdrawalAuditService.record(
+                                savedWithdrawal,
+                                "CANCELLED",
+                                oldStatus,
+                                WithdrawalStatus.CANCELLED,
+                                withdrawal.getUser(),
+                                "Withdrawal cancelled by user");
 
                 return toResponse(savedWithdrawal);
         }

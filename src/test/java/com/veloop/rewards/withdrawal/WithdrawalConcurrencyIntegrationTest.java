@@ -122,12 +122,14 @@ class WithdrawalConcurrencyIntegrationTest {
             return;
         }
 
-        /*
-         * Delete child records first because of foreign-key constraints.
-         */
-
         jdbcTemplate.update("""
                 DELETE FROM withdrawal_idempotency
+                WHERE user_id = ?
+                """,
+                testUserId);
+
+        jdbcTemplate.update("""
+                DELETE FROM withdrawal_audit
                 WHERE user_id = ?
                 """,
                 testUserId);
