@@ -31,17 +31,19 @@ public class WithdrawalController {
         }
 
         @PostMapping
-        // used to diplay description of each enpoint on swagger api
         @Operation(summary = "Create withdrawal request", description = "Creates a withdrawal request for the authenticated user. "
-                        + "Payout amount and required VES are resolved from backend configuration. ", security = @SecurityRequirement(name = "bearerAuth"))
+                        + "Payout amount and required VES are resolved from backend configuration. "
+                        + "An Idempotency-Key header is required to prevent duplicate withdrawal requests.", security = @SecurityRequirement(name = "bearerAuth"))
         public ResponseEntity<ApiResponse<WithdrawalResponse>> createWithdrawal(
                         Authentication authentication,
+                        @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
                         @Valid @RequestBody WithdrawalCreateRequest request) {
 
                 Long userId = Long.valueOf(authentication.getName());
 
                 WithdrawalResponse response = withdrawalService.createWithdrawal(
                                 userId,
+                                idempotencyKey,
                                 request);
 
                 return ResponseEntity
