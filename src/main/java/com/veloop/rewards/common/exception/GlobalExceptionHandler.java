@@ -1,5 +1,6 @@
 package com.veloop.rewards.common.exception;
 
+import org.springframework.dao.OptimisticLockingFailureException;
 import com.veloop.rewards.common.response.ErrorResponse;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
@@ -159,6 +160,58 @@ public class GlobalExceptionHandler {
                                 .body(
                                                 ErrorResponse.of(
                                                                 "An unexpected error occurred",
+                                                                request.getRequestURI()));
+        }
+
+        @ExceptionHandler(IdempotencyKeyRequiredException.class)
+        public ResponseEntity<ErrorResponse> handleIdempotencyKeyRequired(
+                        IdempotencyKeyRequiredException ex,
+                        HttpServletRequest request) {
+
+                return ResponseEntity
+                                .status(HttpStatus.BAD_REQUEST)
+                                .body(
+                                                ErrorResponse.of(
+                                                                ex.getMessage(),
+                                                                request.getRequestURI()));
+        }
+
+        @ExceptionHandler(IdempotencyConflictException.class)
+        public ResponseEntity<ErrorResponse> handleIdempotencyConflict(
+                        IdempotencyConflictException ex,
+                        HttpServletRequest request) {
+
+                return ResponseEntity
+                                .status(HttpStatus.CONFLICT)
+                                .body(
+                                                ErrorResponse.of(
+                                                                ex.getMessage(),
+                                                                request.getRequestURI()));
+        }
+
+        @ExceptionHandler(WithdrawalConcurrencyException.class)
+        public ResponseEntity<ErrorResponse> handleWithdrawalConcurrency(
+                        WithdrawalConcurrencyException ex,
+                        HttpServletRequest request) {
+
+                return ResponseEntity
+                                .status(HttpStatus.CONFLICT)
+                                .body(
+                                                ErrorResponse.of(
+                                                                ex.getMessage(),
+                                                                request.getRequestURI()));
+        }
+
+        @ExceptionHandler(OptimisticLockingFailureException.class)
+        public ResponseEntity<ErrorResponse> handleOptimisticLockingFailure(
+                        OptimisticLockingFailureException ex,
+                        HttpServletRequest request) {
+
+                return ResponseEntity
+                                .status(HttpStatus.CONFLICT)
+                                .body(
+                                                ErrorResponse.of(
+                                                                "Withdrawal could not be completed because the wallet was modified by another request. Please retry.",
                                                                 request.getRequestURI()));
         }
 }
