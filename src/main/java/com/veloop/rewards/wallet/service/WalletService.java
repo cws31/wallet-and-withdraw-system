@@ -1,10 +1,13 @@
 package com.veloop.rewards.wallet.service;
 
 import com.veloop.rewards.wallet.dto.WalletSummaryResponse;
+import com.veloop.rewards.audit.service.AuditLogService;
 import com.veloop.rewards.common.exception.InsufficientBalanceException;
 import com.veloop.rewards.common.exception.InvalidAmountException;
 import com.veloop.rewards.common.exception.WalletAlreadyExistsException;
 import com.veloop.rewards.common.exception.WalletNotFoundException;
+import com.veloop.rewards.user.entity.User;
+import com.veloop.rewards.user.repository.UserRepository;
 import com.veloop.rewards.wallet.entity.Wallet;
 import com.veloop.rewards.wallet.repository.WalletRepository;
 import org.springframework.stereotype.Service;
@@ -20,13 +23,19 @@ public class WalletService {
 
         private final WalletRepository walletRepository;
         private final WalletTransactionService walletTransactionService;
+        private final AuditLogService auditLogService;
+        private final UserRepository userRepository;
 
         public WalletService(
                         WalletRepository walletRepository,
-                        WalletTransactionService walletTransactionService) {
+                        WalletTransactionService walletTransactionService,
+                        AuditLogService auditLogService,
+                        UserRepository userRepository) {
 
                 this.walletRepository = walletRepository;
                 this.walletTransactionService = walletTransactionService;
+                this.auditLogService = auditLogService;
+                this.userRepository = userRepository;
         }
 
         @Transactional
@@ -95,6 +104,21 @@ public class WalletService {
                                 request.description(),
                                 request.metadata());
 
+                User targetUser = userRepository.findById(userId)
+                                .orElseThrow(() -> new IllegalStateException(
+                                                "User not found for wallet audit: " + userId));
+
+                auditLogService.record(
+                                null,
+                                targetUser,
+                                "WALLET",
+                                "WALLET_CREDIT",
+                                request.referenceId(),
+                                "currency=" + currency.name()
+                                                + ", amount=" + amount
+                                                + ", balanceBefore=" + balanceBefore
+                                                + ", balanceAfter=" + balanceAfter);
+
                 return savedWallet;
         }
 
@@ -134,7 +158,6 @@ public class WalletService {
                                 balanceAfter);
 
                 Wallet savedWallet = walletRepository.save(wallet);
-
                 walletTransactionService.createTransaction(
                                 userId,
                                 savedWallet.getId(),
@@ -149,7 +172,23 @@ public class WalletService {
                                 request.description(),
                                 request.metadata());
 
+                User targetUser = userRepository.findById(userId)
+                                .orElseThrow(() -> new IllegalStateException(
+                                                "User not found for wallet audit: " + userId));
+
+                auditLogService.record(
+                                null,
+                                targetUser,
+                                "WALLET",
+                                "WALLET_DEBIT",
+                                request.referenceId(),
+                                "currency=" + currency.name()
+                                                + ", amount=" + amount
+                                                + ", balanceBefore=" + balanceBefore
+                                                + ", balanceAfter=" + balanceAfter);
+
                 return savedWallet;
+
         }
 
         private void validateBalance(

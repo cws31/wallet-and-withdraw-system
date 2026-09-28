@@ -37,295 +37,322 @@ import static org.junit.jupiter.api.Assertions.*;
 @SpringBootTest
 class WithdrawalConcurrencyIntegrationTest {
 
-    @Autowired
-    private WithdrawalService withdrawalService;
+        @Autowired
+        private WithdrawalService withdrawalService;
 
-    @Autowired
-    private WalletService walletService;
+        @Autowired
+        private WalletService walletService;
 
-    @Autowired
-    private UserRepository userRepository;
+        @Autowired
+        private UserRepository userRepository;
 
-    @Autowired
-    private WalletRepository walletRepository;
+        @Autowired
+        private WalletRepository walletRepository;
 
-    @Autowired
-    private WalletTransactionRepository walletTransactionRepository;
+        @Autowired
+        private WalletTransactionRepository walletTransactionRepository;
 
-    @Autowired
-    private WithdrawalRepository withdrawalRepository;
+        @Autowired
+        private WithdrawalRepository withdrawalRepository;
 
-    @Autowired
-    private PayoutMethodRepository payoutMethodRepository;
+        @Autowired
+        private PayoutMethodRepository payoutMethodRepository;
 
-    @Autowired
-    private PayoutOptionRepository payoutOptionRepository;
+        @Autowired
+        private PayoutOptionRepository payoutOptionRepository;
 
-    @Autowired
-    private JdbcTemplate jdbcTemplate;
+        @Autowired
+        private JdbcTemplate jdbcTemplate;
 
-    private Long testUserId;
+        private Long testUserId;
 
-    private PayoutMethod upiMethod;
+        private PayoutMethod upiMethod;
 
-    private PayoutOption tenRupeeOption;
+        private PayoutOption tenRupeeOption;
 
-    @BeforeEach
-    void setUp() {
+        @BeforeEach
+        void setUp() {
 
-        String uniqueId = String.valueOf(System.nanoTime());
+                String uniqueId = String.valueOf(System.nanoTime());
 
-        User user = new User();
-        user.setEmail(
-                "withdrawal-concurrency-" + uniqueId + "@test.com");
-        user.setPasswordHash("test-password");
-        user.setName("Withdrawal Concurrency Test User");
+                User user = new User();
+                user.setEmail(
+                                "withdrawal-concurrency-" + uniqueId + "@test.com");
+                user.setPasswordHash("test-password");
+                user.setName("Withdrawal Concurrency Test User");
 
-        User savedUser = userRepository.save(user);
+                User savedUser = userRepository.save(user);
 
-        testUserId = savedUser.getId();
+                testUserId = savedUser.getId();
 
-        walletService.createWallet(testUserId);
+                walletService.createWallet(testUserId);
 
-        upiMethod = new PayoutMethod();
-        upiMethod.setCode("CONCURRENT_UPI_" + uniqueId);
-        upiMethod.setName("Concurrent Test UPI");
-        upiMethod.setActive(true);
+                upiMethod = new PayoutMethod();
+                upiMethod.setCode("CONCURRENT_UPI_" + uniqueId);
+                upiMethod.setName("Concurrent Test UPI");
+                upiMethod.setActive(true);
 
-        upiMethod = payoutMethodRepository.save(upiMethod);
+                upiMethod = payoutMethodRepository.save(upiMethod);
 
-        tenRupeeOption = new PayoutOption();
-        tenRupeeOption.setMethod(upiMethod);
-        tenRupeeOption.setPayoutAmount(new BigDecimal("10"));
-        tenRupeeOption.setCurrency("INR");
-        tenRupeeOption.setCurrencyAmount(new BigDecimal("2400"));
-        tenRupeeOption.setActive(true);
+                tenRupeeOption = new PayoutOption();
+                tenRupeeOption.setMethod(upiMethod);
+                tenRupeeOption.setPayoutAmount(new BigDecimal("10"));
+                tenRupeeOption.setCurrency("INR");
+                tenRupeeOption.setCurrencyAmount(new BigDecimal("2400"));
+                tenRupeeOption.setActive(true);
 
-        tenRupeeOption = payoutOptionRepository.save(tenRupeeOption);
+                tenRupeeOption = payoutOptionRepository.save(tenRupeeOption);
 
-        walletService.creditWallet(
-                testUserId,
-                new WalletCreditRequest(
-                        Currency.VES,
-                        new BigDecimal("10000"),
-                        TransactionType.REWARD,
-                        "WITHDRAWAL_CONCURRENCY_TEST",
-                        "TEST-CREDIT-" + uniqueId,
-                        "Concurrency integration test credit",
-                        null));
-    }
-
-    @AfterEach
-    void tearDown() {
-
-        if (testUserId == null) {
-            return;
+                walletService.creditWallet(
+                                testUserId,
+                                new WalletCreditRequest(
+                                                Currency.VES,
+                                                new BigDecimal("10000"),
+                                                TransactionType.REWARD,
+                                                "WITHDRAWAL_CONCURRENCY_TEST",
+                                                "TEST-CREDIT-" + uniqueId,
+                                                "Concurrency integration test credit",
+                                                null));
         }
 
-        jdbcTemplate.update("""
-                DELETE FROM withdrawal_idempotency
-                WHERE user_id = ?
-                """,
-                testUserId);
+        @AfterEach
+        void tearDown() {
+                if (testUserId == null) {
+                        return;
+                }
 
-        jdbcTemplate.update("""
-                DELETE FROM withdrawal_audit
-                WHERE user_id = ?
-                """,
-                testUserId);
+                jdbcTemplate.update("""
+                                DELETE FROM withdrawal_idempotency
+                                WHERE user_id = ?
+                                """,
+                                testUserId);
 
-        jdbcTemplate.update("""
-                DELETE FROM withdrawals
-                WHERE user_id = ?
-                """,
-                testUserId);
+                jdbcTemplate.update("""
+                                DELETE FROM audit_log
+                                WHERE target_user_id = ?
+                                """,
+                                testUserId);
 
-        jdbcTemplate.update("""
-                DELETE FROM wallet_transactions
-                WHERE user_id = ?
-                """,
-                testUserId);
+                jdbcTemplate.update("""
+                                DELETE FROM audit_log
+                                WHERE actor_id = ?
+                                """,
+                                testUserId);
 
-        jdbcTemplate.update("""
-                DELETE FROM wallets
-                WHERE user_id = ?
-                """,
-                testUserId);
+                jdbcTemplate.update("""
+                                DELETE FROM withdrawal_audit
+                                WHERE user_id = ?
+                                """,
+                                testUserId);
 
-        if (tenRupeeOption != null
-                && tenRupeeOption.getId() != null) {
+                if (testUserId == null) {
+                        return;
+                }
 
-            jdbcTemplate.update("""
-                    DELETE FROM payout_options
-                    WHERE id = ?
-                    """,
-                    tenRupeeOption.getId());
+                jdbcTemplate.update("""
+                                DELETE FROM withdrawal_idempotency
+                                WHERE user_id = ?
+                                """,
+                                testUserId);
+
+                jdbcTemplate.update("""
+                                DELETE FROM withdrawal_audit
+                                WHERE user_id = ?
+                                """,
+                                testUserId);
+
+                jdbcTemplate.update("""
+                                DELETE FROM withdrawals
+                                WHERE user_id = ?
+                                """,
+                                testUserId);
+
+                jdbcTemplate.update("""
+                                DELETE FROM wallet_transactions
+                                WHERE user_id = ?
+                                """,
+                                testUserId);
+
+                jdbcTemplate.update("""
+                                DELETE FROM wallets
+                                WHERE user_id = ?
+                                """,
+                                testUserId);
+
+                if (tenRupeeOption != null
+                                && tenRupeeOption.getId() != null) {
+
+                        jdbcTemplate.update("""
+                                        DELETE FROM payout_options
+                                        WHERE id = ?
+                                        """,
+                                        tenRupeeOption.getId());
+                }
+
+                if (upiMethod != null
+                                && upiMethod.getId() != null) {
+
+                        jdbcTemplate.update("""
+                                        DELETE FROM payout_methods
+                                        WHERE id = ?
+                                        """,
+                                        upiMethod.getId());
+                }
+
+                jdbcTemplate.update("""
+                                DELETE FROM users
+                                WHERE id = ?
+                                """,
+                                testUserId);
         }
 
-        if (upiMethod != null
-                && upiMethod.getId() != null) {
+        @Test
+        void shouldPreventDuplicateWithdrawalForConcurrentSameKeyRequests()
+                        throws Exception {
 
-            jdbcTemplate.update("""
-                    DELETE FROM payout_methods
-                    WHERE id = ?
-                    """,
-                    upiMethod.getId());
-        }
+                String idempotencyKey = "concurrent-" + System.nanoTime();
 
-        jdbcTemplate.update("""
-                DELETE FROM users
-                WHERE id = ?
-                """,
-                testUserId);
-    }
+                WithdrawalCreateRequest request = createRequest(
+                                upiMethod.getId(),
+                                tenRupeeOption.getId(),
+                                "concurrent@upi");
 
-    @Test
-    void shouldPreventDuplicateWithdrawalForConcurrentSameKeyRequests()
-            throws Exception {
+                ExecutorService executor = Executors.newFixedThreadPool(2);
 
-        String idempotencyKey = "concurrent-" + System.nanoTime();
+                CountDownLatch startLatch = new CountDownLatch(1);
 
-        WithdrawalCreateRequest request = createRequest(
-                upiMethod.getId(),
-                tenRupeeOption.getId(),
-                "concurrent@upi");
+                Future<WithdrawalResponse> firstRequest = executor.submit(() -> {
+                        startLatch.await();
 
-        ExecutorService executor = Executors.newFixedThreadPool(2);
+                        return withdrawalService.createWithdrawal(
+                                        testUserId,
+                                        idempotencyKey,
+                                        request);
+                });
 
-        CountDownLatch startLatch = new CountDownLatch(1);
+                Future<WithdrawalResponse> secondRequest = executor.submit(() -> {
+                        startLatch.await();
 
-        Future<WithdrawalResponse> firstRequest = executor.submit(() -> {
-            startLatch.await();
+                        return withdrawalService.createWithdrawal(
+                                        testUserId,
+                                        idempotencyKey,
+                                        request);
+                });
 
-            return withdrawalService.createWithdrawal(
-                    testUserId,
-                    idempotencyKey,
-                    request);
-        });
+                startLatch.countDown();
 
-        Future<WithdrawalResponse> secondRequest = executor.submit(() -> {
-            startLatch.await();
+                WithdrawalResponse firstResponse = null;
+                WithdrawalResponse secondResponse = null;
 
-            return withdrawalService.createWithdrawal(
-                    testUserId,
-                    idempotencyKey,
-                    request);
-        });
+                Exception firstException = null;
+                Exception secondException = null;
 
-        startLatch.countDown();
+                try {
+                        firstResponse = firstRequest.get();
+                } catch (Exception ex) {
+                        firstException = ex;
+                }
 
-        WithdrawalResponse firstResponse = null;
-        WithdrawalResponse secondResponse = null;
+                try {
+                        secondResponse = secondRequest.get();
+                } catch (Exception ex) {
+                        secondException = ex;
+                }
 
-        Exception firstException = null;
-        Exception secondException = null;
+                executor.shutdown();
 
-        try {
-            firstResponse = firstRequest.get();
-        } catch (Exception ex) {
-            firstException = ex;
-        }
+                int successfulRequests = 0;
 
-        try {
-            secondResponse = secondRequest.get();
-        } catch (Exception ex) {
-            secondException = ex;
-        }
+                if (firstResponse != null) {
+                        successfulRequests++;
+                }
 
-        executor.shutdown();
+                if (secondResponse != null) {
+                        successfulRequests++;
+                }
 
-        int successfulRequests = 0;
+                assertEquals(
+                                1,
+                                successfulRequests,
+                                "Exactly one concurrent request should create the withdrawal");
 
-        if (firstResponse != null) {
-            successfulRequests++;
-        }
-
-        if (secondResponse != null) {
-            successfulRequests++;
-        }
-
-        assertEquals(
-                1,
-                successfulRequests,
-                "Exactly one concurrent request should create the withdrawal");
-
-        assertNotNull(
-                firstResponse != null
-                        ? firstResponse
-                        : secondResponse);
-
-        Exception failedException = firstResponse == null
-                ? firstException
-                : secondException;
-
-        assertNotNull(failedException);
-
-        Wallet wallet = walletRepository.findByUserId(testUserId)
-                .orElseThrow();
-
-        assertEquals(
-                0,
-                wallet.getVes()
-                        .compareTo(new BigDecimal("7600")));
-
-        List<com.veloop.rewards.withdrawal.entity.Withdrawal> withdrawals = withdrawalRepository
-                .findByUserIdOrderByCreatedAtDesc(
-                        testUserId,
-                        org.springframework.data.domain.PageRequest.of(
-                                0,
-                                20))
-                .getContent();
-
-        assertEquals(
-                1,
-                withdrawals.size());
-
-        assertEquals(
-                WithdrawalStatus.PENDING,
-                withdrawals.get(0).getStatus());
-
-        List<WalletTransaction> transactions = walletTransactionRepository
-                .findByUserIdOrderByCreatedAtDesc(
-                        testUserId,
-                        org.springframework.data.domain.PageRequest.of(
-                                0,
-                                20))
-                .getContent();
-
-        long withdrawalTransactions = transactions.stream()
-                .filter(transaction -> transaction.getTransactionType() == TransactionType.WITHDRAWAL)
-                .count();
-
-        assertEquals(
-                1,
-                withdrawalTransactions);
-
-        assertTrue(
-                failedException.getCause() instanceof IdempotencyConflictException
-                        || failedException.getCause() instanceof RuntimeException
-                        || failedException instanceof RuntimeException,
-                "The losing concurrent request should fail");
-
-        assertTrue(
-                withdrawals.get(0)
-                        .getWithdrawalId()
-                        .equals(
+                assertNotNull(
                                 firstResponse != null
-                                        ? firstResponse.getWithdrawalId()
-                                        : secondResponse.getWithdrawalId()));
-    }
+                                                ? firstResponse
+                                                : secondResponse);
 
-    private WithdrawalCreateRequest createRequest(
-            Long payoutMethodId,
-            Long payoutOptionId,
-            String payoutDetails) {
+                Exception failedException = firstResponse == null
+                                ? firstException
+                                : secondException;
 
-        WithdrawalCreateRequest request = new WithdrawalCreateRequest();
+                assertNotNull(failedException);
 
-        request.setPayoutMethodId(payoutMethodId);
-        request.setPayoutOptionId(payoutOptionId);
-        request.setPayoutDetails(payoutDetails);
+                Wallet wallet = walletRepository.findByUserId(testUserId)
+                                .orElseThrow();
 
-        return request;
-    }
+                assertEquals(
+                                0,
+                                wallet.getVes()
+                                                .compareTo(new BigDecimal("7600")));
+
+                List<com.veloop.rewards.withdrawal.entity.Withdrawal> withdrawals = withdrawalRepository
+                                .findByUserIdOrderByCreatedAtDesc(
+                                                testUserId,
+                                                org.springframework.data.domain.PageRequest.of(
+                                                                0,
+                                                                20))
+                                .getContent();
+
+                assertEquals(
+                                1,
+                                withdrawals.size());
+
+                assertEquals(
+                                WithdrawalStatus.PENDING,
+                                withdrawals.get(0).getStatus());
+
+                List<WalletTransaction> transactions = walletTransactionRepository
+                                .findByUserIdOrderByCreatedAtDesc(
+                                                testUserId,
+                                                org.springframework.data.domain.PageRequest.of(
+                                                                0,
+                                                                20))
+                                .getContent();
+
+                long withdrawalTransactions = transactions.stream()
+                                .filter(transaction -> transaction.getTransactionType() == TransactionType.WITHDRAWAL)
+                                .count();
+
+                assertEquals(
+                                1,
+                                withdrawalTransactions);
+
+                assertTrue(
+                                failedException.getCause() instanceof IdempotencyConflictException
+                                                || failedException.getCause() instanceof RuntimeException
+                                                || failedException instanceof RuntimeException,
+                                "The losing concurrent request should fail");
+
+                assertTrue(
+                                withdrawals.get(0)
+                                                .getWithdrawalId()
+                                                .equals(
+                                                                firstResponse != null
+                                                                                ? firstResponse.getWithdrawalId()
+                                                                                : secondResponse.getWithdrawalId()));
+        }
+
+        private WithdrawalCreateRequest createRequest(
+                        Long payoutMethodId,
+                        Long payoutOptionId,
+                        String payoutDetails) {
+
+                WithdrawalCreateRequest request = new WithdrawalCreateRequest();
+
+                request.setPayoutMethodId(payoutMethodId);
+                request.setPayoutOptionId(payoutOptionId);
+                request.setPayoutDetails(payoutDetails);
+
+                return request;
+        }
 }
