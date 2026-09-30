@@ -1,5 +1,6 @@
 package com.veloop.rewards.withdrawal.service;
 
+import com.veloop.rewards.audit.service.AuditLogService;
 import com.veloop.rewards.audit.service.WithdrawalAuditService;
 import com.veloop.rewards.common.exception.InvalidWithdrawalRequestException;
 import com.veloop.rewards.common.exception.InvalidWithdrawalStateException;
@@ -7,6 +8,9 @@ import com.veloop.rewards.common.exception.WithdrawalConcurrencyException;
 import com.veloop.rewards.common.exception.WithdrawalNotFoundException;
 import com.veloop.rewards.common.exception.WithdrawalOwnershipException;
 import com.veloop.rewards.common.exception.WithdrawalTransactionException;
+import com.veloop.rewards.common.response.PageResponse;
+import com.veloop.rewards.idempotency.entity.WithdrawalIdempotency;
+import com.veloop.rewards.idempotency.service.WithdrawalIdempotencyService;
 import com.veloop.rewards.payout.entity.PayoutMethod;
 import com.veloop.rewards.payout.entity.PayoutOption;
 import com.veloop.rewards.payout.repository.PayoutMethodRepository;
@@ -25,13 +29,10 @@ import com.veloop.rewards.withdrawal.dto.WithdrawalResponse;
 import com.veloop.rewards.withdrawal.entity.Withdrawal;
 import com.veloop.rewards.withdrawal.enums.WithdrawalStatus;
 import com.veloop.rewards.withdrawal.repository.WithdrawalRepository;
-import com.veloop.rewards.common.response.PageResponse;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import com.veloop.rewards.idempotency.entity.WithdrawalIdempotency;
-import com.veloop.rewards.idempotency.service.WithdrawalIdempotencyService;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -48,6 +49,7 @@ public class WithdrawalService {
         private final UserRepository userRepository;
         private final WithdrawalIdempotencyService withdrawalIdempotencyService;
         private final WithdrawalAuditService withdrawalAuditService;
+        private final AuditLogService auditLogService;
 
         public WithdrawalService(
                         WithdrawalRepository withdrawalRepository,
@@ -57,7 +59,8 @@ public class WithdrawalService {
                         UserRepository userRepository,
                         PayoutMethodRepository payoutMethodRepository,
                         PayoutOptionRepository payoutOptionRepository,
-                        WithdrawalAuditService withdrawalAuditService) {
+                        WithdrawalAuditService withdrawalAuditService,
+                        AuditLogService auditLogService) {
 
                 this.withdrawalRepository = withdrawalRepository;
                 this.withdrawalIdempotencyService = withdrawalIdempotencyService;
@@ -67,6 +70,7 @@ public class WithdrawalService {
                 this.payoutMethodRepository = payoutMethodRepository;
                 this.payoutOptionRepository = payoutOptionRepository;
                 this.withdrawalAuditService = withdrawalAuditService;
+                this.auditLogService = auditLogService;
         }
 
         @Transactional
@@ -75,16 +79,12 @@ public class WithdrawalService {
                         String idempotencyKey,
                         WithdrawalCreateRequest request) {
 
-                String normalizedIdempotencyKey = withdrawalIdempotencyService.validateAndNormalizeKey(
-                                idempotencyKey);
+                String normalizedIdempotencyKey = withdrawalIdempotencyService.validateAndNormalizeKey(idempotencyKey);
 
-                String requestFingerprint = withdrawalIdempotencyService.createRequestFingerprint(
-                                request);
+                String requestFingerprint = withdrawalIdempotencyService.createRequestFingerprint(request);
 
                 WithdrawalIdempotency existing = withdrawalIdempotencyService
-                                .findExisting(
-                                                userId,
-                                                normalizedIdempotencyKey)
+                                .findExisting(userId, normalizedIdempotencyKey)
                                 .orElse(null);
 
                 if (existing != null) {
@@ -97,8 +97,7 @@ public class WithdrawalService {
                                 throw new WithdrawalConcurrencyException();
                         }
 
-                        return toResponse(
-                                        existing.getWithdrawal());
+                        return toResponse(existing.getWithdrawal());
                 }
 
                 User user = userRepository.findById(userId)
@@ -106,7 +105,8 @@ public class WithdrawalService {
 
                 PayoutMethod payoutMethod = payoutMethodRepository
                                 .findById(request.getPayoutMethodId())
-                                .orElseThrow(() -> new InvalidWithdrawalRequestException("Payout method not found"));
+                                .orElseThrow(() -> new InvalidWithdrawalRequestException(
+                                                "Payout method not found"));
 
                 if (!Boolean.TRUE.equals(payoutMethod.getActive())) {
                         throw new InvalidWithdrawalRequestException(
@@ -115,7 +115,8 @@ public class WithdrawalService {
 
                 PayoutOption payoutOption = payoutOptionRepository
                                 .findById(request.getPayoutOptionId())
-                                .orElseThrow(() -> new InvalidWithdrawalRequestException("Payout option not found"));
+                                .orElseThrow(() -> new InvalidWithdrawalRequestException(
+                                                "Payout option not found"));
 
                 if (!Boolean.TRUE.equals(payoutOption.getActive())) {
                         throw new InvalidWithdrawalRequestException(
@@ -193,6 +194,24 @@ public class WithdrawalService {
                                 user,
                                 "Withdrawal created");
 
+                auditLogService.record(
+                                null,
+                                user,
+                                "WITHDRAWAL",
+                                "WITHDRAWAL_CREATED",
+                                savedWithdrawal.getWithdrawalId(),
+                                "status=PENDING"
+                                                + ", payoutMethodId="
+                                                + savedWithdrawal.getPayoutMethod().getId()
+                                                + ", payoutOptionId="
+                                                + savedWithdrawal.getPayoutOption().getId()
+                                                + ", currency="
+                                                + savedWithdrawal.getCurrency()
+                                                + ", currencyAmount="
+                                                + savedWithdrawal.getCurrencyAmount()
+                                                + ", payoutAmount="
+                                                + savedWithdrawal.getPayoutAmount());
+
                 withdrawalIdempotencyService.createRecord(
                                 user,
                                 normalizedIdempotencyKey,
@@ -242,7 +261,8 @@ public class WithdrawalService {
 
         @Transactional
         public WithdrawalResponse markProcessing(
-                        String withdrawalId) {
+                        String withdrawalId,
+                        Long adminUserId) {
 
                 Withdrawal withdrawal = withdrawalRepository
                                 .findByWithdrawalId(withdrawalId)
@@ -253,6 +273,10 @@ public class WithdrawalService {
                         throw new InvalidWithdrawalStateException(
                                         "Only PENDING withdrawals can be moved to PROCESSING");
                 }
+
+                User adminUser = userRepository.findById(adminUserId)
+                                .orElseThrow(() -> new InvalidWithdrawalRequestException(
+                                                "Admin user not found"));
 
                 WithdrawalStatus oldStatus = withdrawal.getStatus();
 
@@ -269,15 +293,26 @@ public class WithdrawalService {
                                 "PROCESSING",
                                 oldStatus,
                                 WithdrawalStatus.PROCESSING,
-                                null,
+                                adminUser,
                                 "Withdrawal moved to processing");
+
+                auditLogService.record(
+                                adminUser,
+                                savedWithdrawal.getUser(),
+                                "WITHDRAWAL",
+                                "WITHDRAWAL_PROCESSING",
+                                savedWithdrawal.getWithdrawalId(),
+                                "oldStatus=" + oldStatus
+                                                + ", newStatus="
+                                                + WithdrawalStatus.PROCESSING);
 
                 return toResponse(savedWithdrawal);
         }
 
         @Transactional
         public WithdrawalResponse approveWithdrawal(
-                        String withdrawalId) {
+                        String withdrawalId,
+                        Long adminUserId) {
 
                 Withdrawal withdrawal = withdrawalRepository
                                 .findByWithdrawalId(withdrawalId)
@@ -290,6 +325,10 @@ public class WithdrawalService {
                         throw new InvalidWithdrawalStateException(
                                         "Only PENDING or PROCESSING withdrawals can be approved");
                 }
+
+                User adminUser = userRepository.findById(adminUserId)
+                                .orElseThrow(() -> new InvalidWithdrawalRequestException(
+                                                "Admin user not found"));
 
                 WithdrawalStatus oldStatus = withdrawal.getStatus();
 
@@ -308,8 +347,18 @@ public class WithdrawalService {
                                 "APPROVED",
                                 oldStatus,
                                 WithdrawalStatus.APPROVED,
-                                null,
+                                adminUser,
                                 "Withdrawal approved");
+
+                auditLogService.record(
+                                adminUser,
+                                savedWithdrawal.getUser(),
+                                "WITHDRAWAL",
+                                "WITHDRAWAL_APPROVED",
+                                savedWithdrawal.getWithdrawalId(),
+                                "oldStatus=" + oldStatus
+                                                + ", newStatus="
+                                                + WithdrawalStatus.APPROVED);
 
                 return toResponse(savedWithdrawal);
         }
@@ -318,7 +367,8 @@ public class WithdrawalService {
         public WithdrawalResponse rejectWithdrawal(
                         String withdrawalId,
                         String rejectionReason,
-                        String reviewNote) {
+                        String reviewNote,
+                        Long adminUserId) {
 
                 Withdrawal withdrawal = withdrawalRepository
                                 .findByWithdrawalId(withdrawalId)
@@ -338,6 +388,10 @@ public class WithdrawalService {
                         throw new InvalidWithdrawalRequestException(
                                         "Rejection reason is required");
                 }
+
+                User adminUser = userRepository.findById(adminUserId)
+                                .orElseThrow(() -> new InvalidWithdrawalRequestException(
+                                                "Admin user not found"));
 
                 String cleanRejectionReason = rejectionReason.trim();
 
@@ -375,6 +429,7 @@ public class WithdrawalService {
                 walletService.creditWallet(
                                 withdrawal.getUser().getId(),
                                 reversalRequest);
+
                 WithdrawalStatus oldStatus = withdrawal.getStatus();
 
                 LocalDateTime now = LocalDateTime.now();
@@ -398,8 +453,21 @@ public class WithdrawalService {
                                 "REJECTED",
                                 oldStatus,
                                 WithdrawalStatus.REJECTED,
-                                null,
-                                "Withdrawal rejected: " + cleanRejectionReason);
+                                adminUser,
+                                "Withdrawal rejected: "
+                                                + cleanRejectionReason);
+
+                auditLogService.record(
+                                adminUser,
+                                savedWithdrawal.getUser(),
+                                "WITHDRAWAL",
+                                "WITHDRAWAL_REJECTED",
+                                savedWithdrawal.getWithdrawalId(),
+                                "oldStatus=" + oldStatus
+                                                + ", newStatus="
+                                                + WithdrawalStatus.REJECTED
+                                                + ", rejectionReason="
+                                                + cleanRejectionReason);
 
                 return toResponse(savedWithdrawal);
         }
@@ -419,6 +487,7 @@ public class WithdrawalService {
                 }
 
                 if (withdrawal.getStatus() != WithdrawalStatus.PENDING) {
+
                         throw new InvalidWithdrawalStateException(
                                         "Only PENDING withdrawals can be cancelled");
                 }
@@ -473,6 +542,16 @@ public class WithdrawalService {
                                 WithdrawalStatus.CANCELLED,
                                 withdrawal.getUser(),
                                 "Withdrawal cancelled by user");
+
+                auditLogService.record(
+                                withdrawal.getUser(),
+                                savedWithdrawal.getUser(),
+                                "WITHDRAWAL",
+                                "WITHDRAWAL_CANCELLED",
+                                savedWithdrawal.getWithdrawalId(),
+                                "oldStatus=" + oldStatus
+                                                + ", newStatus="
+                                                + WithdrawalStatus.CANCELLED);
 
                 return toResponse(savedWithdrawal);
         }
