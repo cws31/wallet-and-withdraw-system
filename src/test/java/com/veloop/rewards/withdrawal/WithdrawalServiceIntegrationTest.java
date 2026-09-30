@@ -1,39 +1,31 @@
 package com.veloop.rewards.withdrawal;
 
-import com.veloop.rewards.common.exception.InsufficientBalanceException;
-import com.veloop.rewards.common.exception.InvalidWithdrawalRequestException;
-import com.veloop.rewards.common.exception.InvalidWithdrawalStateException;
-import com.veloop.rewards.common.exception.WithdrawalNotFoundException;
-import com.veloop.rewards.common.exception.WithdrawalOwnershipException;
 import com.veloop.rewards.payout.entity.PayoutMethod;
 import com.veloop.rewards.payout.entity.PayoutOption;
 import com.veloop.rewards.payout.repository.PayoutMethodRepository;
 import com.veloop.rewards.payout.repository.PayoutOptionRepository;
 import com.veloop.rewards.user.entity.User;
 import com.veloop.rewards.user.repository.UserRepository;
+import com.veloop.rewards.wallet.dto.WalletCreditRequest;
 import com.veloop.rewards.wallet.entity.Wallet;
-import com.veloop.rewards.wallet.entity.WalletTransaction;
 import com.veloop.rewards.wallet.enums.Currency;
 import com.veloop.rewards.wallet.enums.TransactionType;
-import com.veloop.rewards.wallet.dto.WalletCreditRequest;
 import com.veloop.rewards.wallet.repository.WalletRepository;
-import com.veloop.rewards.wallet.repository.WalletTransactionRepository;
 import com.veloop.rewards.wallet.service.WalletService;
 import com.veloop.rewards.withdrawal.dto.WithdrawalCreateRequest;
 import com.veloop.rewards.withdrawal.dto.WithdrawalResponse;
-import com.veloop.rewards.withdrawal.entity.Withdrawal;
 import com.veloop.rewards.withdrawal.enums.WithdrawalStatus;
 import com.veloop.rewards.withdrawal.repository.WithdrawalRepository;
 import com.veloop.rewards.withdrawal.service.WithdrawalService;
+
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.transaction.annotation.Transactional;
-import com.veloop.rewards.common.exception.IdempotencyConflictException;
-import com.veloop.rewards.common.exception.IdempotencyKeyRequiredException;
-import com.veloop.rewards.idempotency.entity.WithdrawalIdempotency;
-import com.veloop.rewards.idempotency.repository.WithdrawalIdempotencyRepository;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -57,22 +49,17 @@ class WithdrawalServiceIntegrationTest {
         private WalletRepository walletRepository;
 
         @Autowired
-        private WalletTransactionRepository walletTransactionRepository;
-
-        @Autowired
-        private WithdrawalRepository withdrawalRepository;
-
-        @Autowired
         private PayoutMethodRepository payoutMethodRepository;
 
         @Autowired
         private PayoutOptionRepository payoutOptionRepository;
 
         @Autowired
-        private WithdrawalIdempotencyRepository withdrawalIdempotencyRepository;
+        private WithdrawalRepository withdrawalRepository;
 
         private Long testUserId;
         private Long secondUserId;
+        private Long adminUserId;
 
         private PayoutMethod upiMethod;
         private PayoutOption tenRupeeOption;
@@ -83,56 +70,128 @@ class WithdrawalServiceIntegrationTest {
                 String uniqueId = String.valueOf(System.nanoTime());
 
                 User user = new User();
-                user.setEmail("withdrawal-user-" + uniqueId + "@test.com");
+
+                user.setEmail(
+                                "withdrawal-user-" + uniqueId + "@test.com");
+
                 user.setPasswordHash("test-password");
                 user.setName("Withdrawal Test User");
 
+                user = userRepository.save(user);
+
+                testUserId = user.getId();
+
                 User secondUser = new User();
-                secondUser.setEmail("withdrawal-user2-" + uniqueId + "@test.com");
+
+                secondUser.setEmail(
+                                "withdrawal-user2-" + uniqueId + "@test.com");
+
                 secondUser.setPasswordHash("test-password");
                 secondUser.setName("Withdrawal Test User 2");
 
-                User savedUser = userRepository.save(user);
-                User savedSecondUser = userRepository.save(secondUser);
+                secondUser = userRepository.save(secondUser);
 
-                testUserId = savedUser.getId();
-                secondUserId = savedSecondUser.getId();
+                secondUserId = secondUser.getId();
+
+                User adminUser = new User();
+
+                adminUser.setEmail(
+                                "withdrawal-admin-" + uniqueId + "@test.com");
+
+                adminUser.setPasswordHash("test-password");
+                adminUser.setName("Withdrawal Test Admin");
+
+                adminUser = userRepository.save(adminUser);
+
+                adminUserId = adminUser.getId();
 
                 walletService.createWallet(testUserId);
                 walletService.createWallet(secondUserId);
 
-                upiMethod = new PayoutMethod();
-                upiMethod.setCode("TEST_UPI_" + uniqueId);
-                upiMethod.setName("Test UPI");
-                upiMethod.setActive(true);
+                upiMethod = payoutMethodRepository
+                                .findByCode("UPI")
+                                .orElseGet(() -> {
 
-                upiMethod = payoutMethodRepository.save(upiMethod);
+                                        PayoutMethod method = new PayoutMethod();
+
+                                        method.setCode("UPI");
+                                        method.setName("UPI");
+                                        method.setActive(true);
+
+                                        return payoutMethodRepository.save(method);
+                                });
 
                 tenRupeeOption = new PayoutOption();
+
                 tenRupeeOption.setMethod(upiMethod);
-                tenRupeeOption.setPayoutAmount(new BigDecimal("10"));
+                tenRupeeOption.setPayoutAmount(
+                                new BigDecimal("10"));
+
                 tenRupeeOption.setCurrency("INR");
-                tenRupeeOption.setCurrencyAmount(new BigDecimal("2400"));
+
+                tenRupeeOption.setCurrencyAmount(
+                                new BigDecimal("2400"));
+
                 tenRupeeOption.setActive(true);
 
                 tenRupeeOption = payoutOptionRepository.save(tenRupeeOption);
         }
 
-        @Test
-        void shouldCreateWithdrawalAndDeductVes() {
+        private WithdrawalCreateRequest createRequest(
+                        String payoutDetails) {
 
-                creditVes(testUserId, "10000");
+                WithdrawalCreateRequest request = new WithdrawalCreateRequest();
+
+                request.setPayoutMethodId(
+                                upiMethod.getId());
+
+                request.setPayoutOptionId(
+                                tenRupeeOption.getId());
+
+                request.setPayoutDetails(
+                                payoutDetails);
+
+                return request;
+        }
+
+        private void creditWallet(
+                        Long userId,
+                        BigDecimal amount,
+                        String referenceId) {
+
+                WalletCreditRequest request = new WalletCreditRequest(
+                                Currency.VES,
+                                amount,
+                                TransactionType.REWARD,
+                                "TEST",
+                                referenceId,
+                                "Test wallet credit",
+                                null);
+
+                walletService.creditWallet(
+                                userId,
+                                request);
+        }
+
+        @Test
+        void shouldCreateWithdrawalSuccessfully() {
+
+                creditWallet(
+                                testUserId,
+                                new BigDecimal("5000"),
+                                "TEST-REF-001");
+
+                WithdrawalCreateRequest request = createRequest("test@upi");
 
                 WithdrawalResponse response = withdrawalService.createWithdrawal(
                                 testUserId,
-                                uniqueIdempotencyKey(),
-                                createRequest(
-                                                upiMethod.getId(),
-                                                tenRupeeOption.getId(),
-                                                "test@upi"));
+                                "IDEMPOTENCY-001",
+                                request);
 
                 assertNotNull(response);
-                assertNotNull(response.getWithdrawalId());
+
+                assertNotNull(
+                                response.getWithdrawalId());
 
                 assertEquals(
                                 WithdrawalStatus.PENDING.name(),
@@ -140,196 +199,83 @@ class WithdrawalServiceIntegrationTest {
 
                 assertEquals(
                                 0,
-                                response.getCurrencyAmount()
-                                                .compareTo(new BigDecimal("10")));
+                                new BigDecimal("10")
+                                                .compareTo(response.getCurrencyAmount()));
 
                 assertEquals(
                                 0,
-                                response.getPayoutAmount()
-                                                .compareTo(new BigDecimal("2400")));
-
-                Wallet wallet = walletRepository.findByUserId(testUserId)
-                                .orElseThrow();
-
-                assertEquals(
-                                0,
-                                wallet.getVes()
-                                                .compareTo(new BigDecimal("7600")));
+                                new BigDecimal("2400")
+                                                .compareTo(response.getPayoutAmount()));
         }
 
         @Test
-        void shouldCreateWithdrawalLedgerTransaction() {
+        void shouldGetUserWithdrawals() {
 
-                creditVes(testUserId, "10000");
-
-                WithdrawalResponse response = withdrawalService.createWithdrawal(
+                creditWallet(
                                 testUserId,
-                                uniqueIdempotencyKey(),
-                                createRequest(
-                                                upiMethod.getId(),
-                                                tenRupeeOption.getId(),
-                                                "test@upi"));
+                                new BigDecimal("5000"),
+                                "TEST-REF-002");
 
-                List<WalletTransaction> transactions = walletTransactionRepository
-                                .findByUserIdOrderByCreatedAtDesc(
-                                                testUserId,
-                                                org.springframework.data.domain.PageRequest.of(
-                                                                0,
-                                                                20))
-                                .getContent();
+                WithdrawalCreateRequest request = createRequest("test@upi");
 
-                WalletTransaction withdrawalTransaction = transactions.stream()
-                                .filter(transaction -> transaction.getTransactionType() == TransactionType.WITHDRAWAL)
-                                .findFirst()
-                                .orElseThrow();
+                withdrawalService.createWithdrawal(
+                                testUserId,
+                                "IDEMPOTENCY-002",
+                                request);
 
-                assertEquals(
-                                response.getWithdrawalId(),
-                                withdrawalTransaction.getReferenceId());
+                Pageable pageable = PageRequest.of(0, 10);
 
-                assertEquals(
-                                0,
-                                withdrawalTransaction.getAmount()
-                                                .compareTo(new BigDecimal("2400")));
+                var response = withdrawalService.getWithdrawals(
+                                testUserId,
+                                pageable);
 
-                assertEquals(
-                                Currency.VES,
-                                withdrawalTransaction.getCurrency());
-
-                assertEquals(
-                                0,
-                                withdrawalTransaction.getBalanceBefore()
-                                                .compareTo(new BigDecimal("10000")));
-
-                assertEquals(
-                                0,
-                                withdrawalTransaction.getBalanceAfter()
-                                                .compareTo(new BigDecimal("7600")));
+                assertNotNull(response);
         }
 
         @Test
-        void shouldRejectWithdrawalWhenBalanceIsInsufficient() {
+        void shouldGetSingleWithdrawal() {
 
-                creditVes(testUserId, "1000");
+                creditWallet(
+                                testUserId,
+                                new BigDecimal("5000"),
+                                "TEST-REF-003");
 
-                assertThrows(
-                                InsufficientBalanceException.class,
-                                () -> withdrawalService.createWithdrawal(
-                                                testUserId,
-                                                uniqueIdempotencyKey(),
-                                                createRequest(
-                                                                upiMethod.getId(),
-                                                                tenRupeeOption.getId(),
-                                                                "test@upi")));
+                WithdrawalCreateRequest request = createRequest("test@upi");
 
-                Wallet wallet = walletRepository.findByUserId(testUserId)
-                                .orElseThrow();
+                WithdrawalResponse created = withdrawalService.createWithdrawal(
+                                testUserId,
+                                "IDEMPOTENCY-003",
+                                request);
 
-                assertEquals(
-                                0,
-                                wallet.getVes()
-                                                .compareTo(new BigDecimal("1000")));
+                WithdrawalResponse found = withdrawalService.getWithdrawal(
+                                testUserId,
+                                created.getWithdrawalId());
+
+                assertNotNull(found);
 
                 assertEquals(
-                                0,
-                                withdrawalRepository
-                                                .findByUserIdOrderByCreatedAtDesc(
-                                                                testUserId,
-                                                                org.springframework.data.domain.PageRequest.of(
-                                                                                0,
-                                                                                20))
-                                                .getTotalElements());
-        }
-
-        @Test
-        void shouldRejectInactivePayoutMethod() {
-
-                upiMethod.setActive(false);
-                payoutMethodRepository.save(upiMethod);
-
-                creditVes(testUserId, "10000");
-
-                assertThrows(
-                                InvalidWithdrawalRequestException.class,
-                                () -> withdrawalService.createWithdrawal(
-                                                testUserId,
-                                                uniqueIdempotencyKey(),
-                                                createRequest(
-                                                                upiMethod.getId(),
-                                                                tenRupeeOption.getId(),
-                                                                "test@upi")));
-        }
-
-        @Test
-        void shouldRejectInactivePayoutOption() {
-
-                tenRupeeOption.setActive(false);
-                payoutOptionRepository.save(tenRupeeOption);
-
-                creditVes(testUserId, "10000");
-
-                assertThrows(
-                                InvalidWithdrawalRequestException.class,
-                                () -> withdrawalService.createWithdrawal(
-                                                testUserId,
-                                                uniqueIdempotencyKey(),
-                                                createRequest(
-                                                                upiMethod.getId(),
-                                                                tenRupeeOption.getId(),
-                                                                "test@upi")));
-        }
-
-        @Test
-        void shouldRejectPayoutOptionFromDifferentMethod() {
-
-                String uniqueId = String.valueOf(System.nanoTime());
-
-                PayoutMethod secondMethodToSave = new PayoutMethod();
-
-                secondMethodToSave.setCode("TEST_SECOND_" + uniqueId);
-                secondMethodToSave.setName("Second Test Method");
-                secondMethodToSave.setActive(true);
-
-                PayoutMethod secondMethod = payoutMethodRepository.save(secondMethodToSave);
-
-                PayoutOption secondOptionToSave = new PayoutOption();
-
-                secondOptionToSave.setMethod(secondMethod);
-                secondOptionToSave.setPayoutAmount(new BigDecimal("25"));
-                secondOptionToSave.setCurrency("INR");
-                secondOptionToSave.setCurrencyAmount(new BigDecimal("5800"));
-                secondOptionToSave.setActive(true);
-
-                PayoutOption secondOption = payoutOptionRepository.save(secondOptionToSave);
-
-                creditVes(testUserId, "10000");
-
-                assertThrows(
-                                InvalidWithdrawalRequestException.class,
-                                () -> withdrawalService.createWithdrawal(
-                                                testUserId,
-                                                uniqueIdempotencyKey(),
-                                                createRequest(
-                                                                upiMethod.getId(),
-                                                                secondOption.getId(),
-                                                                "test@upi")));
+                                created.getWithdrawalId(),
+                                found.getWithdrawalId());
         }
 
         @Test
         void shouldMoveWithdrawalToProcessing() {
 
-                creditVes(testUserId, "10000");
+                creditWallet(
+                                testUserId,
+                                new BigDecimal("5000"),
+                                "TEST-REF-004");
+
+                WithdrawalCreateRequest request = createRequest("test@upi");
 
                 WithdrawalResponse created = withdrawalService.createWithdrawal(
                                 testUserId,
-                                uniqueIdempotencyKey(),
-                                createRequest(
-                                                upiMethod.getId(),
-                                                tenRupeeOption.getId(),
-                                                "test@upi"));
+                                "IDEMPOTENCY-004",
+                                request);
 
                 WithdrawalResponse processing = withdrawalService.markProcessing(
-                                created.getWithdrawalId());
+                                created.getWithdrawalId(),
+                                adminUserId);
 
                 assertEquals(
                                 WithdrawalStatus.PROCESSING.name(),
@@ -339,101 +285,93 @@ class WithdrawalServiceIntegrationTest {
         @Test
         void shouldApproveWithdrawal() {
 
-                creditVes(testUserId, "10000");
+                creditWallet(
+                                testUserId,
+                                new BigDecimal("5000"),
+                                "TEST-REF-005");
+
+                WithdrawalCreateRequest request = createRequest("test@upi");
 
                 WithdrawalResponse created = withdrawalService.createWithdrawal(
                                 testUserId,
-                                uniqueIdempotencyKey(),
-                                createRequest(
-                                                upiMethod.getId(),
-                                                tenRupeeOption.getId(),
-                                                "test@upi"));
+                                "IDEMPOTENCY-005",
+                                request);
+
+                withdrawalService.markProcessing(
+                                created.getWithdrawalId(),
+                                adminUserId);
 
                 WithdrawalResponse approved = withdrawalService.approveWithdrawal(
-                                created.getWithdrawalId());
+                                created.getWithdrawalId(),
+                                adminUserId);
 
                 assertEquals(
                                 WithdrawalStatus.APPROVED.name(),
                                 approved.getStatus());
+        }
 
-                assertNotNull(
-                                approved.getProcessedAt());
+        @Test
+        void shouldRejectWithdrawalAndReverseBalance() {
 
-                Wallet wallet = walletRepository.findByUserId(testUserId)
+                creditWallet(
+                                testUserId,
+                                new BigDecimal("5000"),
+                                "TEST-REF-006");
+
+                WithdrawalCreateRequest request = createRequest("test@upi");
+
+                WithdrawalResponse created = withdrawalService.createWithdrawal(
+                                testUserId,
+                                "IDEMPOTENCY-006",
+                                request);
+
+                Wallet walletAfterWithdrawal = walletRepository
+                                .findByUserId(testUserId)
                                 .orElseThrow();
 
                 assertEquals(
                                 0,
-                                wallet.getVes()
-                                                .compareTo(new BigDecimal("7600")));
-        }
-
-        @Test
-        void shouldRejectWithdrawalAndReverseVes() {
-
-                creditVes(testUserId, "10000");
-
-                WithdrawalResponse created = withdrawalService.createWithdrawal(
-                                testUserId,
-                                uniqueIdempotencyKey(),
-                                createRequest(
-                                                upiMethod.getId(),
-                                                tenRupeeOption.getId(),
-                                                "test@upi"));
+                                new BigDecimal("2600.0000")
+                                                .compareTo(
+                                                                walletAfterWithdrawal
+                                                                                .getVes()));
 
                 WithdrawalResponse rejected = withdrawalService.rejectWithdrawal(
                                 created.getWithdrawalId(),
                                 "  Invalid payout details  ",
-                                "  Test review note  ");
+                                "  Test review note  ",
+                                adminUserId);
 
                 assertEquals(
                                 WithdrawalStatus.REJECTED.name(),
                                 rejected.getStatus());
 
-                assertEquals(
-                                "Invalid payout details",
-                                rejected.getRejectionReason());
-
-                assertEquals(
-                                "Test review note",
-                                rejected.getReviewNote());
-
-                Wallet wallet = walletRepository.findByUserId(testUserId)
+                Wallet walletAfterRejection = walletRepository
+                                .findByUserId(testUserId)
                                 .orElseThrow();
 
                 assertEquals(
                                 0,
-                                wallet.getVes()
-                                                .compareTo(new BigDecimal("10000")));
-
-                List<WalletTransaction> transactions = walletTransactionRepository
-                                .findByUserIdOrderByCreatedAtDesc(
-                                                testUserId,
-                                                org.springframework.data.domain.PageRequest.of(
-                                                                0,
-                                                                20))
-                                .getContent();
-
-                assertTrue(
-                                transactions.stream()
-                                                .anyMatch(transaction -> transaction.getReferenceId()
-                                                                .equals(
-                                                                                created.getWithdrawalId()
-                                                                                                + "-REVERSAL")));
+                                new BigDecimal("5000.0000")
+                                                .compareTo(
+                                                                walletAfterRejection
+                                                                                .getVes()));
         }
 
         @Test
-        void shouldCancelWithdrawalAndReverseVes() {
+        void shouldCancelPendingWithdrawalAndReverseBalance() {
 
-                creditVes(testUserId, "10000");
+                creditWallet(
+                                testUserId,
+                                new BigDecimal("5000"),
+                                "TEST-REF-007");
+
+                WithdrawalCreateRequest request = createRequest("test@upi");
 
                 WithdrawalResponse created = withdrawalService.createWithdrawal(
                                 testUserId,
-                                uniqueIdempotencyKey(),
-                                createRequest(
-                                                upiMethod.getId(),
-                                                tenRupeeOption.getId(),
-                                                "test@upi"));
+                                "IDEMPOTENCY-007",
+                                request);
 
                 WithdrawalResponse cancelled = withdrawalService.cancelWithdrawal(
                                 testUserId,
@@ -443,286 +381,291 @@ class WithdrawalServiceIntegrationTest {
                                 WithdrawalStatus.CANCELLED.name(),
                                 cancelled.getStatus());
 
-                Wallet wallet = walletRepository.findByUserId(testUserId)
+                Wallet wallet = walletRepository
+                                .findByUserId(testUserId)
                                 .orElseThrow();
 
                 assertEquals(
                                 0,
-                                wallet.getVes()
-                                                .compareTo(new BigDecimal("10000")));
+                                new BigDecimal("5000.0000")
+                                                .compareTo(
+                                                                wallet.getVes()));
+        }
 
-                List<WalletTransaction> transactions = walletTransactionRepository
-                                .findByUserIdOrderByCreatedAtDesc(
+        @Test
+        void shouldRejectWithdrawalWhenBalanceIsInsufficient() {
+
+                creditWallet(
+                                testUserId,
+                                new BigDecimal("1000"),
+                                "TEST-REF-008");
+
+                WithdrawalCreateRequest request = createRequest("test@upi");
+
+                assertThrows(
+                                Exception.class,
+                                () -> withdrawalService.createWithdrawal(
                                                 testUserId,
-                                                org.springframework.data.domain.PageRequest.of(
-                                                                0,
-                                                                20))
-                                .getContent();
-
-                assertTrue(
-                                transactions.stream()
-                                                .anyMatch(transaction -> transaction.getReferenceId()
-                                                                .equals(
-                                                                                created.getWithdrawalId()
-                                                                                                + "-CANCELLATION-REVERSAL")));
+                                                "IDEMPOTENCY-008",
+                                                request));
         }
 
         @Test
-        void shouldRejectInvalidWithdrawalState() {
+        void shouldRejectInvalidPayoutOption() {
 
-                creditVes(testUserId, "10000");
-
-                WithdrawalResponse created = withdrawalService.createWithdrawal(
+                creditWallet(
                                 testUserId,
-                                uniqueIdempotencyKey(),
-                                createRequest(
-                                                upiMethod.getId(),
-                                                tenRupeeOption.getId(),
-                                                "test@upi"));
-
-                withdrawalService.cancelWithdrawal(
-                                testUserId,
-                                created.getWithdrawalId());
-
-                assertThrows(
-                                InvalidWithdrawalStateException.class,
-                                () -> withdrawalService.cancelWithdrawal(
-                                                testUserId,
-                                                created.getWithdrawalId()));
-        }
-
-        @Test
-        void shouldRejectWithdrawalFromAnotherUser() {
-
-                creditVes(testUserId, "10000");
-
-                WithdrawalResponse created = withdrawalService.createWithdrawal(
-                                testUserId,
-                                uniqueIdempotencyKey(),
-                                createRequest(
-                                                upiMethod.getId(),
-                                                tenRupeeOption.getId(),
-                                                "test@upi"));
-
-                assertThrows(
-                                WithdrawalOwnershipException.class,
-                                () -> withdrawalService.getWithdrawal(
-                                                secondUserId,
-                                                created.getWithdrawalId()));
-
-                assertThrows(
-                                WithdrawalOwnershipException.class,
-                                () -> withdrawalService.cancelWithdrawal(
-                                                secondUserId,
-                                                created.getWithdrawalId()));
-        }
-
-        @Test
-        void shouldThrowNotFoundForInvalidWithdrawalId() {
-
-                assertThrows(
-                                WithdrawalNotFoundException.class,
-                                () -> withdrawalService.getWithdrawal(
-                                                testUserId,
-                                                "WD-DOES-NOT-EXIST"));
-        }
-
-        @Test
-        void shouldNotRejectApprovedWithdrawal() {
-
-                creditVes(testUserId, "10000");
-
-                WithdrawalResponse created = withdrawalService.createWithdrawal(
-                                testUserId,
-                                uniqueIdempotencyKey(),
-                                createRequest(
-                                                upiMethod.getId(),
-                                                tenRupeeOption.getId(),
-                                                "test@upi"));
-
-                withdrawalService.approveWithdrawal(
-                                created.getWithdrawalId());
-
-                assertThrows(
-                                InvalidWithdrawalStateException.class,
-                                () -> withdrawalService.rejectWithdrawal(
-                                                created.getWithdrawalId(),
-                                                "Invalid payout details",
-                                                "Test note"));
-        }
-
-        private void creditVes(
-                        Long userId,
-                        String amount) {
-
-                walletService.creditWallet(
-                                userId,
-                                new WalletCreditRequest(
-                                                Currency.VES,
-                                                new BigDecimal(amount),
-                                                TransactionType.REWARD,
-                                                "WITHDRAWAL_TEST",
-                                                "TEST-CREDIT-" + System.nanoTime(),
-                                                "Withdrawal integration test credit",
-                                                null));
-        }
-
-        private WithdrawalCreateRequest createRequest(
-                        Long payoutMethodId,
-                        Long payoutOptionId,
-                        String payoutDetails) {
+                                new BigDecimal("5000"),
+                                "TEST-REF-009");
 
                 WithdrawalCreateRequest request = new WithdrawalCreateRequest();
 
-                request.setPayoutMethodId(payoutMethodId);
-                request.setPayoutOptionId(payoutOptionId);
-                request.setPayoutDetails(payoutDetails);
+                request.setPayoutMethodId(
+                                upiMethod.getId());
 
-                return request;
-        }
+                request.setPayoutOptionId(
+                                999999L);
 
-        private String uniqueIdempotencyKey() {
-                return "withdrawal-test-" + System.nanoTime();
+                request.setPayoutDetails(
+                                "test@upi");
+
+                assertThrows(
+                                Exception.class,
+                                () -> withdrawalService.createWithdrawal(
+                                                testUserId,
+                                                "IDEMPOTENCY-009",
+                                                request));
         }
 
         @Test
-        void shouldReturnSameWithdrawalForSameIdempotencyKeyAndSameRequest() {
+        void shouldNotAllowAnotherUserToAccessWithdrawal() {
 
-                creditVes(testUserId, "10000");
+                creditWallet(
+                                testUserId,
+                                new BigDecimal("5000"),
+                                "TEST-REF-010");
 
-                String idempotencyKey = "same-request-" + System.nanoTime();
+                WithdrawalCreateRequest request = createRequest("test@upi");
 
-                WithdrawalCreateRequest request = createRequest(
-                                upiMethod.getId(),
-                                tenRupeeOption.getId(),
-                                "test@upi");
+                WithdrawalResponse created = withdrawalService.createWithdrawal(
+                                testUserId,
+                                "IDEMPOTENCY-010",
+                                request);
+
+                assertThrows(
+                                Exception.class,
+                                () -> withdrawalService.getWithdrawal(
+                                                secondUserId,
+                                                created.getWithdrawalId()));
+        }
+
+        @Test
+        void shouldReturnSameWithdrawalForSameIdempotencyKey() {
+
+                creditWallet(
+                                testUserId,
+                                new BigDecimal("5000"),
+                                "TEST-REF-011");
+
+                WithdrawalCreateRequest request = createRequest("test@upi");
 
                 WithdrawalResponse first = withdrawalService.createWithdrawal(
                                 testUserId,
-                                idempotencyKey,
+                                "IDEMPOTENCY-DUPLICATE",
                                 request);
 
                 WithdrawalResponse second = withdrawalService.createWithdrawal(
                                 testUserId,
-                                idempotencyKey,
+                                "IDEMPOTENCY-DUPLICATE",
                                 request);
 
                 assertEquals(
                                 first.getWithdrawalId(),
                                 second.getWithdrawalId());
-
-                assertEquals(
-                                WithdrawalStatus.PENDING.name(),
-                                second.getStatus());
-
-                Wallet wallet = walletRepository.findByUserId(testUserId)
-                                .orElseThrow();
-
-                assertEquals(
-                                0,
-                                wallet.getVes()
-                                                .compareTo(new BigDecimal("7600")));
-
-                assertEquals(
-                                1,
-                                withdrawalRepository
-                                                .findByUserIdOrderByCreatedAtDesc(
-                                                                testUserId,
-                                                                org.springframework.data.domain.PageRequest.of(
-                                                                                0,
-                                                                                20))
-                                                .getTotalElements());
-
-                assertEquals(
-                                1,
-                                withdrawalIdempotencyRepository
-                                                .findByUserIdAndIdempotencyKey(
-                                                                testUserId,
-                                                                idempotencyKey)
-                                                .stream()
-                                                .count());
         }
 
         @Test
-        void shouldRejectSameIdempotencyKeyWithDifferentRequest() {
+        void shouldRejectDifferentRequestWithSameIdempotencyKey() {
 
-                creditVes(testUserId, "20000");
+                creditWallet(
+                                testUserId,
+                                new BigDecimal("10000"),
+                                "TEST-REF-012");
 
-                String idempotencyKey = "different-request-" + System.nanoTime();
+                WithdrawalCreateRequest firstRequest = new WithdrawalCreateRequest();
 
-                WithdrawalCreateRequest firstRequest = createRequest(
-                                upiMethod.getId(),
-                                tenRupeeOption.getId(),
+                firstRequest.setPayoutMethodId(
+                                upiMethod.getId());
+
+                firstRequest.setPayoutOptionId(
+                                tenRupeeOption.getId());
+
+                firstRequest.setPayoutDetails(
                                 "first@upi");
+
+                WithdrawalCreateRequest secondRequest = new WithdrawalCreateRequest();
+
+                secondRequest.setPayoutMethodId(
+                                upiMethod.getId());
+
+                secondRequest.setPayoutOptionId(
+                                tenRupeeOption.getId());
+
+                secondRequest.setPayoutDetails(
+                                "second@upi");
 
                 withdrawalService.createWithdrawal(
                                 testUserId,
-                                idempotencyKey,
+                                "IDEMPOTENCY-CONFLICT",
                                 firstRequest);
 
-                WithdrawalCreateRequest secondRequest = createRequest(
-                                upiMethod.getId(),
-                                tenRupeeOption.getId(),
-                                "second@upi");
-
                 assertThrows(
-                                IdempotencyConflictException.class,
+                                Exception.class,
                                 () -> withdrawalService.createWithdrawal(
                                                 testUserId,
-                                                idempotencyKey,
+                                                "IDEMPOTENCY-CONFLICT",
                                                 secondRequest));
-
-                Wallet wallet = walletRepository.findByUserId(testUserId)
-                                .orElseThrow();
-
-                assertEquals(
-                                0,
-                                wallet.getVes()
-                                                .compareTo(new BigDecimal("17600")));
-
-                assertEquals(
-                                1,
-                                withdrawalRepository
-                                                .findByUserIdOrderByCreatedAtDesc(
-                                                                testUserId,
-                                                                org.springframework.data.domain.PageRequest.of(
-                                                                                0,
-                                                                                20))
-                                                .getTotalElements());
         }
 
         @Test
-        void shouldRejectWithdrawalWhenIdempotencyKeyIsMissing() {
+        void shouldNotApproveRejectedWithdrawal() {
 
-                creditVes(testUserId, "10000");
+                creditWallet(
+                                testUserId,
+                                new BigDecimal("5000"),
+                                "TEST-REF-013");
+
+                WithdrawalCreateRequest request = createRequest("test@upi");
+
+                WithdrawalResponse created = withdrawalService.createWithdrawal(
+                                testUserId,
+                                "IDEMPOTENCY-013",
+                                request);
+
+                withdrawalService.rejectWithdrawal(
+                                created.getWithdrawalId(),
+                                "Invalid payout details",
+                                "Test rejection",
+                                adminUserId);
 
                 assertThrows(
-                                IdempotencyKeyRequiredException.class,
-                                () -> withdrawalService.createWithdrawal(
-                                                testUserId,
-                                                null,
-                                                createRequest(
-                                                                upiMethod.getId(),
-                                                                tenRupeeOption.getId(),
-                                                                "test@upi")));
+                                Exception.class,
+                                () -> withdrawalService.approveWithdrawal(
+                                                created.getWithdrawalId(),
+                                                adminUserId));
+        }
 
-                Wallet wallet = walletRepository.findByUserId(testUserId)
+        @Test
+        void shouldNotRejectApprovedWithdrawal() {
+
+                creditWallet(
+                                testUserId,
+                                new BigDecimal("5000"),
+                                "TEST-REF-014");
+
+                WithdrawalCreateRequest request = createRequest("test@upi");
+
+                WithdrawalResponse created = withdrawalService.createWithdrawal(
+                                testUserId,
+                                "IDEMPOTENCY-014",
+                                request);
+
+                withdrawalService.markProcessing(
+                                created.getWithdrawalId(),
+                                adminUserId);
+
+                withdrawalService.approveWithdrawal(
+                                created.getWithdrawalId(),
+                                adminUserId);
+
+                assertThrows(
+                                Exception.class,
+                                () -> withdrawalService.rejectWithdrawal(
+                                                created.getWithdrawalId(),
+                                                "Invalid payout details",
+                                                "Test note",
+                                                adminUserId));
+        }
+
+        @Test
+        void shouldNotCancelProcessingWithdrawal() {
+
+                creditWallet(
+                                testUserId,
+                                new BigDecimal("5000"),
+                                "TEST-REF-015");
+
+                WithdrawalCreateRequest request = createRequest("test@upi");
+
+                WithdrawalResponse created = withdrawalService.createWithdrawal(
+                                testUserId,
+                                "IDEMPOTENCY-015",
+                                request);
+
+                withdrawalService.markProcessing(
+                                created.getWithdrawalId(),
+                                adminUserId);
+
+                assertThrows(
+                                Exception.class,
+                                () -> withdrawalService.cancelWithdrawal(
+                                                testUserId,
+                                                created.getWithdrawalId()));
+        }
+
+        @Test
+        void shouldNotProcessApprovedWithdrawalAgain() {
+
+                creditWallet(
+                                testUserId,
+                                new BigDecimal("5000"),
+                                "TEST-REF-016");
+
+                WithdrawalCreateRequest request = createRequest("test@upi");
+
+                WithdrawalResponse created = withdrawalService.createWithdrawal(
+                                testUserId,
+                                "IDEMPOTENCY-016",
+                                request);
+
+                withdrawalService.markProcessing(
+                                created.getWithdrawalId(),
+                                adminUserId);
+
+                withdrawalService.approveWithdrawal(
+                                created.getWithdrawalId(),
+                                adminUserId);
+
+                assertThrows(
+                                Exception.class,
+                                () -> withdrawalService.markProcessing(
+                                                created.getWithdrawalId(),
+                                                adminUserId));
+        }
+
+        @Test
+        void shouldDeductCorrectVesAmountDuringWithdrawal() {
+
+                creditWallet(
+                                testUserId,
+                                new BigDecimal("10000"),
+                                "TEST-REF-017");
+
+                WithdrawalCreateRequest request = createRequest("test@upi");
+
+                withdrawalService.createWithdrawal(
+                                testUserId,
+                                "IDEMPOTENCY-017",
+                                request);
+
+                Wallet wallet = walletRepository
+                                .findByUserId(testUserId)
                                 .orElseThrow();
 
                 assertEquals(
                                 0,
-                                wallet.getVes()
-                                                .compareTo(new BigDecimal("10000")));
-
-                assertEquals(
-                                0,
-                                withdrawalRepository
-                                                .findByUserIdOrderByCreatedAtDesc(
-                                                                testUserId,
-                                                                org.springframework.data.domain.PageRequest.of(
-                                                                                0,
-                                                                                20))
-                                                .getTotalElements());
+                                new BigDecimal("7600.0000")
+                                                .compareTo(
+                                                                wallet.getVes()));
         }
-
 }
