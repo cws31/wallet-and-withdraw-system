@@ -110,11 +110,19 @@ class PayoutDetailValidatorTest {
         }
 
         @Test
-        void shouldAcceptNonBlankDetailsForOtherMethodsForNow() {
+        void shouldAcceptValidEmailForAmazonGiftCard() {
 
                 assertDoesNotThrow(() -> validator.validate(
                                 "AMAZON_GIFT_CARD",
-                                "recipient-details"));
+                                "user@example.com"));
+        }
+
+        @Test
+        void shouldAcceptValidEmailForGooglePlayGiftCard() {
+
+                assertDoesNotThrow(() -> validator.validate(
+                                "GOOGLE_PLAY_GIFT_CARD",
+                                "user@example.com"));
         }
 
         @Test
@@ -122,6 +130,35 @@ class PayoutDetailValidatorTest {
 
                 assertDoesNotThrow(() -> validator.validate(
                                 "upi",
+
                                 "vijay@upi"));
+        }
+
+        @Test
+        void shouldRejectInvalidAmazonGiftCardEmail() {
+
+                InvalidWithdrawalRequestException exception = assertThrows(
+                                InvalidWithdrawalRequestException.class,
+                                () -> validator.validate(
+                                                "AMAZON_GIFT_CARD",
+                                                "invalid-email"));
+
+                assertEquals(
+                                "Invalid email address for Amazon Gift Card",
+                                exception.getMessage());
+        }
+
+        @Test
+        void shouldRejectInvalidGooglePlayGiftCardEmail() {
+
+                InvalidWithdrawalRequestException exception = assertThrows(
+                                InvalidWithdrawalRequestException.class,
+                                () -> validator.validate(
+                                                "GOOGLE_PLAY_GIFT_CARD",
+                                                "invalid-email"));
+
+                assertEquals(
+                                "Invalid email address for Google Play Gift Card",
+                                exception.getMessage());
         }
 }

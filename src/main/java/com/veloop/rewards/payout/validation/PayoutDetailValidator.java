@@ -7,6 +7,15 @@ import org.springframework.stereotype.Component;
 public class PayoutDetailValidator {
 
     private static final String UPI = "UPI";
+    private static final String AMAZON_GIFT_CARD = "AMAZON_GIFT_CARD";
+    private static final String GOOGLE_PLAY_GIFT_CARD = "GOOGLE_PLAY_GIFT_CARD";
+
+    private static final String UPI_PATTERN = "^[A-Za-z0-9._-]{2,256}@[A-Za-z0-9.-]{2,64}$";
+
+    private static final String EMAIL_PATTERN = "^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]{1,64}"
+            + "@"
+            + "[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?"
+            + "(?:\\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$";
 
     public void validate(
             String payoutMethodCode,
@@ -26,7 +35,9 @@ public class PayoutDetailValidator {
                     "Payout details are required");
         }
 
-        String methodCode = payoutMethodCode.trim().toUpperCase();
+        String methodCode = payoutMethodCode
+                .trim()
+                .toUpperCase();
 
         String details = payoutDetails.trim();
 
@@ -34,18 +45,40 @@ public class PayoutDetailValidator {
 
             case UPI -> validateUpi(details);
 
-            default -> {
-            }
+            case AMAZON_GIFT_CARD ->
+                validateGiftCardEmail(
+                        details,
+                        "Amazon Gift Card");
+
+            case GOOGLE_PLAY_GIFT_CARD ->
+                validateGiftCardEmail(
+                        details,
+                        "Google Play Gift Card");
+
+            default -> throw new InvalidWithdrawalRequestException(
+                    "Unsupported payout method: " + methodCode);
         }
     }
 
-    private void validateUpi(String payoutDetails) {
+    private void validateUpi(
+            String payoutDetails) {
 
-        if (!payoutDetails.matches(
-                "^[A-Za-z0-9._-]{2,256}@[A-Za-z0-9.-]{2,64}$")) {
+        if (!payoutDetails.matches(UPI_PATTERN)) {
 
             throw new InvalidWithdrawalRequestException(
                     "Invalid UPI ID");
+        }
+    }
+
+    private void validateGiftCardEmail(
+            String payoutDetails,
+            String payoutMethodName) {
+
+        if (!payoutDetails.matches(EMAIL_PATTERN)) {
+
+            throw new InvalidWithdrawalRequestException(
+                    "Invalid email address for "
+                            + payoutMethodName);
         }
     }
 }

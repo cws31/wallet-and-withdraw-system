@@ -16,6 +16,7 @@ import com.veloop.rewards.payout.entity.PayoutOption;
 import com.veloop.rewards.payout.repository.PayoutMethodRepository;
 import com.veloop.rewards.payout.repository.PayoutOptionRepository;
 import com.veloop.rewards.payout.validation.PayoutDetailValidator;
+import com.veloop.rewards.payout.validation.PayoutOptionValidator;
 import com.veloop.rewards.user.entity.User;
 import com.veloop.rewards.user.repository.UserRepository;
 import com.veloop.rewards.wallet.dto.WalletCreditRequest;
@@ -46,6 +47,7 @@ public class WithdrawalService {
         private final PayoutMethodRepository payoutMethodRepository;
         private final PayoutOptionRepository payoutOptionRepository;
         private final PayoutDetailValidator payoutDetailValidator;
+        private final PayoutOptionValidator payoutOptionValidator;
         private final WalletService walletService;
         private final WalletTransactionRepository walletTransactionRepository;
         private final UserRepository userRepository;
@@ -65,7 +67,8 @@ public class WithdrawalService {
                         PayoutDetailValidator payoutDetailValidator,
                         WithdrawalAuditService withdrawalAuditService,
                         AuditLogService auditLogService,
-                        WithdrawalEligibilityService withdrawalEligibilityService) {
+                        WithdrawalEligibilityService withdrawalEligibilityService,
+                        PayoutOptionValidator payoutOptionValidator) {
 
                 this.withdrawalRepository = withdrawalRepository;
                 this.withdrawalIdempotencyService = withdrawalIdempotencyService;
@@ -78,6 +81,7 @@ public class WithdrawalService {
                 this.withdrawalAuditService = withdrawalAuditService;
                 this.auditLogService = auditLogService;
                 this.withdrawalEligibilityService = withdrawalEligibilityService;
+                this.payoutOptionValidator = payoutOptionValidator;
         }
 
         @Transactional
@@ -120,31 +124,18 @@ public class WithdrawalService {
                                 .orElseThrow(() -> new InvalidWithdrawalRequestException(
                                                 "Payout method not found"));
 
-                if (!Boolean.TRUE.equals(payoutMethod.getActive())) {
-                        throw new InvalidWithdrawalRequestException(
-                                        "Selected payout method is inactive");
-                }
-
-                payoutDetailValidator.validate(
-                                payoutMethod.getCode(),
-                                request.getPayoutDetails());
-
                 PayoutOption payoutOption = payoutOptionRepository
                                 .findById(request.getPayoutOptionId())
                                 .orElseThrow(() -> new InvalidWithdrawalRequestException(
                                                 "Payout option not found"));
 
-                if (!Boolean.TRUE.equals(payoutOption.getActive())) {
-                        throw new InvalidWithdrawalRequestException(
-                                        "Selected payout option is inactive");
-                }
+                payoutOptionValidator.validate(
+                                payoutMethod,
+                                payoutOption);
 
-                if (!payoutOption.getMethod().getId()
-                                .equals(payoutMethod.getId())) {
-
-                        throw new InvalidWithdrawalRequestException(
-                                        "Payout option does not belong to selected payout method");
-                }
+                payoutDetailValidator.validate(
+                                payoutMethod.getCode(),
+                                request.getPayoutDetails());
 
                 BigDecimal payoutAmount = payoutOption.getPayoutAmount();
                 BigDecimal vesRequired = payoutOption.getCurrencyAmount();

@@ -17,6 +17,7 @@ import com.veloop.rewards.wallet.repository.WalletTransactionRepository;
 import com.veloop.rewards.wallet.service.WalletService;
 import com.veloop.rewards.withdrawal.dto.WithdrawalCreateRequest;
 import com.veloop.rewards.withdrawal.dto.WithdrawalResponse;
+import com.veloop.rewards.withdrawal.entity.Withdrawal;
 import com.veloop.rewards.withdrawal.enums.WithdrawalStatus;
 import com.veloop.rewards.withdrawal.repository.WithdrawalRepository;
 import com.veloop.rewards.withdrawal.service.WithdrawalService;
@@ -27,6 +28,7 @@ import org.junit.jupiter.api.Test;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.math.BigDecimal;
@@ -80,8 +82,12 @@ class WithdrawalConcurrencyIntegrationTest {
                 String uniqueId = String.valueOf(System.nanoTime());
 
                 User user = new User();
+
                 user.setEmail(
-                                "withdrawal-concurrency-" + uniqueId + "@test.com");
+                                "withdrawal-concurrency-"
+                                                + uniqueId
+                                                + "@test.com");
+
                 user.setPasswordHash("test-password");
                 user.setName("Withdrawal Concurrency Test User");
 
@@ -94,21 +100,34 @@ class WithdrawalConcurrencyIntegrationTest {
 
                 walletService.createWallet(testUserId);
 
-                upiMethod = new PayoutMethod();
-                upiMethod.setCode("CONCURRENT_UPI_" + uniqueId);
-                upiMethod.setName("Concurrent Test UPI");
-                upiMethod.setActive(true);
+                /*
+                 * Use the payout method initialized by
+                 * PayoutConfigurationInitializer.
+                 *
+                 * Do not create another UPI method because
+                 * payout_methods.code is unique.
+                 */
+                upiMethod = payoutMethodRepository
+                                .findByCode("UPI")
+                                .orElseThrow(() -> new IllegalStateException(
+                                                "UPI payout method was not initialized"));
 
-                upiMethod = payoutMethodRepository.save(upiMethod);
+                assertTrue(
+                                Boolean.TRUE.equals(upiMethod.getActive()),
+                                "UPI payout method must be active for this test");
 
                 tenRupeeOption = new PayoutOption();
+
                 tenRupeeOption.setMethod(upiMethod);
-                tenRupeeOption.setPayoutAmount(new BigDecimal("10"));
+                tenRupeeOption.setPayoutAmount(
+                                new BigDecimal("10"));
                 tenRupeeOption.setCurrency("INR");
-                tenRupeeOption.setCurrencyAmount(new BigDecimal("2400"));
+                tenRupeeOption.setCurrencyAmount(
+                                new BigDecimal("2400"));
                 tenRupeeOption.setActive(true);
 
-                tenRupeeOption = payoutOptionRepository.save(tenRupeeOption);
+                tenRupeeOption = payoutOptionRepository.save(
+                                tenRupeeOption);
 
                 walletService.creditWallet(
                                 testUserId,
@@ -181,16 +200,6 @@ class WithdrawalConcurrencyIntegrationTest {
                                         tenRupeeOption.getId());
                 }
 
-                if (upiMethod != null
-                                && upiMethod.getId() != null) {
-
-                        jdbcTemplate.update("""
-                                        DELETE FROM payout_methods
-                                        WHERE id = ?
-                                        """,
-                                        upiMethod.getId());
-                }
-
                 jdbcTemplate.update("""
                                 DELETE FROM users
                                 WHERE id = ?
@@ -214,6 +223,7 @@ class WithdrawalConcurrencyIntegrationTest {
                 CountDownLatch startLatch = new CountDownLatch(1);
 
                 Future<WithdrawalResponse> firstRequest = executor.submit(() -> {
+
                         startLatch.await();
 
                         return withdrawalService.createWithdrawal(
@@ -223,6 +233,7 @@ class WithdrawalConcurrencyIntegrationTest {
                 });
 
                 Future<WithdrawalResponse> secondRequest = executor.submit(() -> {
+
                         startLatch.await();
 
                         return withdrawalService.createWithdrawal(
@@ -286,12 +297,13 @@ class WithdrawalConcurrencyIntegrationTest {
                 assertEquals(
                                 0,
                                 wallet.getVes()
-                                                .compareTo(new BigDecimal("7600")));
+                                                .compareTo(
+                                                                new BigDecimal("7600")));
 
-                List<com.veloop.rewards.withdrawal.entity.Withdrawal> withdrawals = withdrawalRepository
+                List<Withdrawal> withdrawals = withdrawalRepository
                                 .findByUserIdOrderByCreatedAtDesc(
                                                 testUserId,
-                                                org.springframework.data.domain.PageRequest.of(
+                                                PageRequest.of(
                                                                 0,
                                                                 20))
                                 .getContent();
@@ -307,7 +319,7 @@ class WithdrawalConcurrencyIntegrationTest {
                 List<WalletTransaction> transactions = walletTransactionRepository
                                 .findByUserIdOrderByCreatedAtDesc(
                                                 testUserId,
-                                                org.springframework.data.domain.PageRequest.of(
+                                                PageRequest.of(
                                                                 0,
                                                                 20))
                                 .getContent();
@@ -326,13 +338,12 @@ class WithdrawalConcurrencyIntegrationTest {
                                                 || failedException instanceof RuntimeException,
                                 "The losing concurrent request should fail");
 
-                assertTrue(
+                assertEquals(
                                 withdrawals.get(0)
-                                                .getWithdrawalId()
-                                                .equals(
-                                                                firstResponse != null
-                                                                                ? firstResponse.getWithdrawalId()
-                                                                                : secondResponse.getWithdrawalId()));
+                                                .getWithdrawalId(),
+                                firstResponse != null
+                                                ? firstResponse.getWithdrawalId()
+                                                : secondResponse.getWithdrawalId());
         }
 
         private WithdrawalCreateRequest createRequest(
@@ -342,9 +353,14 @@ class WithdrawalConcurrencyIntegrationTest {
 
                 WithdrawalCreateRequest request = new WithdrawalCreateRequest();
 
-                request.setPayoutMethodId(payoutMethodId);
-                request.setPayoutOptionId(payoutOptionId);
-                request.setPayoutDetails(payoutDetails);
+                request.setPayoutMethodId(
+                                payoutMethodId);
+
+                request.setPayoutOptionId(
+                                payoutOptionId);
+
+                request.setPayoutDetails(
+                                payoutDetails);
 
                 return request;
         }
