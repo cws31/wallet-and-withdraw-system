@@ -27,111 +27,111 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @AutoConfigureMockMvc
 class WalletSummaryApiIntegrationTest {
 
-    @Autowired
-    private MockMvc mockMvc;
+        @Autowired
+        private MockMvc mockMvc;
 
-    @Autowired
-    private WalletService walletService;
+        @Autowired
+        private WalletService walletService;
 
-    @Autowired
-    private UserRepository userRepository;
+        @Autowired
+        private UserRepository userRepository;
 
-    @Autowired
-    private PasswordEncoder passwordEncoder;
+        @Autowired
+        private PasswordEncoder passwordEncoder;
 
-    @Autowired
-    private JwtService jwtService;
+        @Autowired
+        private JwtService jwtService;
 
-    private String jwtToken;
+        private String jwtToken;
 
-    @BeforeEach
-    void setUp() {
+        @BeforeEach
+        void setUp() {
 
-        User user = User.builder()
-                .name("Wallet Summary Test User")
-                .email("summary-" + System.nanoTime() + "@example.com")
-                .passwordHash(passwordEncoder.encode("Password@123"))
-                .role("USER")
-                .accountStatus("ACTIVE")
-                .verified(false)
-                .level(0)
-                .build();
+                User user = User.builder()
+                                .name("Wallet Summary Test User")
+                                .email("summary-" + System.nanoTime() + "@example.com")
+                                .passwordHash(passwordEncoder.encode("Password@123"))
+                                .role("USER")
+                                .accountStatus("ACTIVE")
+                                .verified(false)
+                                .level(0)
+                                .build();
 
-        User savedUser = userRepository.saveAndFlush(user);
+                User savedUser = userRepository.saveAndFlush(user);
 
-        walletService.createWallet(savedUser.getId());
+                walletService.createWallet(savedUser.getId());
 
-        walletService.creditWallet(
-                savedUser.getId(),
-                new WalletCreditRequest(
-                        Currency.VES,
-                        new BigDecimal("5000"),
-                        TransactionType.REWARD,
-                        "TEST",
-                        "SUMMARY-CREDIT-" + System.nanoTime(),
-                        "Summary credit test",
-                        null));
+                walletService.creditWallet(
+                                savedUser.getId(),
+                                new WalletCreditRequest(
+                                                Currency.VES,
+                                                new BigDecimal("5000"),
+                                                TransactionType.REWARD,
+                                                "TEST",
+                                                "SUMMARY-CREDIT-" + System.nanoTime(),
+                                                "Summary credit test",
+                                                null));
 
-        walletService.debitWallet(
-                savedUser.getId(),
-                new WalletDebitRequest(
-                        Currency.VES,
-                        new BigDecimal("1000"),
-                        TransactionType.WITHDRAWAL,
-                        "TEST",
-                        "SUMMARY-DEBIT-" + System.nanoTime(),
-                        "Summary debit test",
-                        null));
+                walletService.debitWallet(
+                                savedUser.getId(),
+                                new WalletDebitRequest(
+                                                Currency.VES,
+                                                new BigDecimal("1000"),
+                                                TransactionType.WITHDRAWAL,
+                                                "TEST",
+                                                "SUMMARY-DEBIT-" + System.nanoTime(),
+                                                "Summary debit test",
+                                                null));
 
-        jwtToken = jwtService.generateToken(
-                savedUser.getId(),
-                savedUser.getEmail(),
-                savedUser.getRole());
-    }
+                jwtToken = jwtService.generateToken(
+                                savedUser.getId(),
+                                savedUser.getEmail(),
+                                savedUser.getRole());
+        }
 
-    @Test
-    void shouldReturnWalletSummaryForAuthenticatedUser()
-            throws Exception {
+        @Test
+        void shouldReturnWalletSummaryForAuthenticatedUser()
+                        throws Exception {
 
-        mockMvc.perform(
-                get("/api/wallet/summary")
-                        .header(
-                                "Authorization",
-                                "Bearer " + jwtToken)
-                        .contentType(MediaType.APPLICATION_JSON))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath(
-                        "$.success",
-                        is(true)))
-                .andExpect(jsonPath(
-                        "$.message",
-                        is("Wallet summary retrieved successfully")))
-                .andExpect(jsonPath(
-                        "$.data.ves",
-                        is(4000.0)))
-                .andExpect(jsonPath(
-                        "$.data.sves",
-                        is(0.0)))
-                .andExpect(jsonPath(
-                        "$.data.gems",
-                        is(0.0)))
-                .andExpect(jsonPath(
-                        "$.data.tokens",
-                        is(0.0)))
-                .andExpect(jsonPath(
-                        "$.data.spins",
-                        is(0.0)))
-                .andExpect(jsonPath(
-                        "$.data.totalTransactions",
-                        is(2)));
-    }
+                mockMvc.perform(
+                                get("/api/wallet/summary")
+                                                .header(
+                                                                "Authorization",
+                                                                "Bearer " + jwtToken)
+                                                .contentType(MediaType.APPLICATION_JSON))
+                                .andExpect(status().isOk())
+                                .andExpect(jsonPath(
+                                                "$.success",
+                                                is(true)))
+                                .andExpect(jsonPath(
+                                                "$.message",
+                                                is("Wallet summary retrieved successfully")))
+                                .andExpect(jsonPath(
+                                                "$.data.ves",
+                                                is(4000.0)))
+                                .andExpect(jsonPath(
+                                                "$.data.sves",
+                                                is(0.0)))
+                                .andExpect(jsonPath(
+                                                "$.data.gems",
+                                                is(0.0)))
+                                .andExpect(jsonPath(
+                                                "$.data.tokens",
+                                                is(0.0)))
+                                .andExpect(jsonPath(
+                                                "$.data.spins",
+                                                is(0.0)))
+                                .andExpect(jsonPath(
+                                                "$.data.totalTransactions",
+                                                is(2)));
+        }
 
-    @Test
-    void shouldRejectSummaryRequestWithoutJwt()
-            throws Exception {
+        @Test
+        void shouldRejectSummaryRequestWithoutJwt()
+                        throws Exception {
 
-        mockMvc.perform(
-                get("/api/wallet/summary"))
-                .andExpect(status().isUnauthorized());
-    }
+                mockMvc.perform(
+                                get("/api/wallet/summary"))
+                                .andExpect(status().isUnauthorized());
+        }
 }

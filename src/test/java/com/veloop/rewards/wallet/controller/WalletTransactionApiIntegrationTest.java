@@ -31,146 +31,146 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @AutoConfigureMockMvc
 class WalletTransactionApiIntegrationTest {
 
-    @Autowired
-    private MockMvc mockMvc;
+        @Autowired
+        private MockMvc mockMvc;
 
-    @Autowired
-    private WalletService walletService;
+        @Autowired
+        private WalletService walletService;
 
-    @Autowired
-    private UserRepository userRepository;
+        @Autowired
+        private UserRepository userRepository;
 
-    @Autowired
-    private PasswordEncoder passwordEncoder;
+        @Autowired
+        private PasswordEncoder passwordEncoder;
 
-    @Autowired
-    private JwtService jwtService;
+        @Autowired
+        private JwtService jwtService;
 
-    @Autowired
-    private ObjectMapper objectMapper;
+        @Autowired
+        private ObjectMapper objectMapper;
 
-    private Long testUserId;
-    private String jwtToken;
+        private Long testUserId;
+        private String jwtToken;
 
-    @BeforeEach
-    void setUp() {
+        @BeforeEach
+        void setUp() {
 
-        User user = User.builder()
-                .name("Wallet API Test User")
-                .email("wallet-api-" + System.nanoTime() + "@example.com")
-                .passwordHash(passwordEncoder.encode("Password@123"))
-                .role("USER")
-                .accountStatus("ACTIVE")
-                .verified(false)
-                .level(0)
-                .build();
+                User user = User.builder()
+                                .name("Wallet API Test User")
+                                .email("wallet-api-" + System.nanoTime() + "@example.com")
+                                .passwordHash(passwordEncoder.encode("Password@123"))
+                                .role("USER")
+                                .accountStatus("ACTIVE")
+                                .verified(false)
+                                .level(0)
+                                .build();
 
-        User savedUser = userRepository.saveAndFlush(user);
+                User savedUser = userRepository.saveAndFlush(user);
 
-        testUserId = savedUser.getId();
+                testUserId = savedUser.getId();
 
-        walletService.createWallet(testUserId);
+                walletService.createWallet(testUserId);
 
-        walletService.creditWallet(
-                testUserId,
-                new WalletCreditRequest(
-                        Currency.VES,
-                        new BigDecimal("5000"),
-                        TransactionType.REWARD,
-                        "TEST",
-                        "API-CREDIT-" + System.nanoTime(),
-                        "API transaction history test",
-                        null));
+                walletService.creditWallet(
+                                testUserId,
+                                new WalletCreditRequest(
+                                                Currency.VES,
+                                                new BigDecimal("5000"),
+                                                TransactionType.REWARD,
+                                                "TEST",
+                                                "API-CREDIT-" + System.nanoTime(),
+                                                "API transaction history test",
+                                                null));
 
-        jwtToken = jwtService.generateToken(
-                savedUser.getId(),
-                savedUser.getEmail(),
-                savedUser.getRole());
-    }
+                jwtToken = jwtService.generateToken(
+                                savedUser.getId(),
+                                savedUser.getEmail(),
+                                savedUser.getRole());
+        }
 
-    @Test
-    void shouldGetAuthenticatedUsersTransactions() throws Exception {
+        @Test
+        void shouldGetAuthenticatedUsersTransactions() throws Exception {
 
-        mockMvc.perform(
-                get("/api/wallet/transactions")
-                        .param("page", "1")
-                        .param("limit", "20")
-                        .header(
-                                "Authorization",
-                                "Bearer " + jwtToken)
-                        .contentType(MediaType.APPLICATION_JSON))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.success", is(true)))
-                .andExpect(jsonPath(
-                        "$.message",
-                        is("Wallet transactions retrieved successfully")))
-                .andExpect(jsonPath(
-                        "$.data.content",
-                        hasSize(1)))
-                .andExpect(jsonPath(
-                        "$.data.content[0].currency",
-                        is("VES")))
-                .andExpect(jsonPath(
-                        "$.data.content[0].transactionType",
-                        is("REWARD")))
-                .andExpect(jsonPath(
-                        "$.data.content[0].amount",
-                        is(5000.0)))
+                mockMvc.perform(
+                                get("/api/wallet/transactions")
+                                                .param("page", "1")
+                                                .param("limit", "20")
+                                                .header(
+                                                                "Authorization",
+                                                                "Bearer " + jwtToken)
+                                                .contentType(MediaType.APPLICATION_JSON))
+                                .andExpect(status().isOk())
+                                .andExpect(jsonPath("$.success", is(true)))
+                                .andExpect(jsonPath(
+                                                "$.message",
+                                                is("Wallet transactions retrieved successfully")))
+                                .andExpect(jsonPath(
+                                                "$.data.content",
+                                                hasSize(1)))
+                                .andExpect(jsonPath(
+                                                "$.data.content[0].currency",
+                                                is("VES")))
+                                .andExpect(jsonPath(
+                                                "$.data.content[0].transactionType",
+                                                is("REWARD")))
+                                .andExpect(jsonPath(
+                                                "$.data.content[0].amount",
+                                                is(5000.0)))
 
-                .andExpect(jsonPath(
-                        "$.data.page",
-                        is(1)))
-                .andExpect(jsonPath(
-                        "$.data.limit",
-                        is(20)))
-                .andExpect(jsonPath(
-                        "$.data.totalElements",
-                        is(1)))
-                .andExpect(jsonPath(
-                        "$.data.totalPages",
-                        is(1)))
-                .andExpect(jsonPath(
-                        "$.data.hasNext",
-                        is(false)))
-                .andExpect(jsonPath(
-                        "$.data.hasPrevious",
-                        is(false)));
+                                .andExpect(jsonPath(
+                                                "$.data.page",
+                                                is(1)))
+                                .andExpect(jsonPath(
+                                                "$.data.limit",
+                                                is(20)))
+                                .andExpect(jsonPath(
+                                                "$.data.totalElements",
+                                                is(1)))
+                                .andExpect(jsonPath(
+                                                "$.data.totalPages",
+                                                is(1)))
+                                .andExpect(jsonPath(
+                                                "$.data.hasNext",
+                                                is(false)))
+                                .andExpect(jsonPath(
+                                                "$.data.hasPrevious",
+                                                is(false)));
 
-    }
+        }
 
-    @Test
-    void shouldRejectRequestWithoutJwt() throws Exception {
+        @Test
+        void shouldRejectRequestWithoutJwt() throws Exception {
 
-        mockMvc.perform(
-                get("/api/wallet/transactions")
-                        .param("page", "1")
-                        .param("limit", "20"))
-                .andExpect(status().isUnauthorized());
-    }
+                mockMvc.perform(
+                                get("/api/wallet/transactions")
+                                                .param("page", "1")
+                                                .param("limit", "20"))
+                                .andExpect(status().isUnauthorized());
+        }
 
-    @Test
-    void shouldNotExposeUserIdInTransactionResponse() throws Exception {
+        @Test
+        void shouldNotExposeUserIdInTransactionResponse() throws Exception {
 
-        String response = mockMvc.perform(
-                get("/api/wallet/transactions")
-                        .param("page", "1")
-                        .param("limit", "20")
-                        .header(
-                                "Authorization",
-                                "Bearer " + jwtToken))
-                .andExpect(status().isOk())
-                .andReturn()
-                .getResponse()
-                .getContentAsString();
+                String response = mockMvc.perform(
+                                get("/api/wallet/transactions")
+                                                .param("page", "1")
+                                                .param("limit", "20")
+                                                .header(
+                                                                "Authorization",
+                                                                "Bearer " + jwtToken))
+                                .andExpect(status().isOk())
+                                .andReturn()
+                                .getResponse()
+                                .getContentAsString();
 
-        JsonNode json = objectMapper.readTree(response);
+                JsonNode json = objectMapper.readTree(response);
 
-        JsonNode transaction = json.path("data")
-                .path("content")
-                .get(0);
+                JsonNode transaction = json.path("data")
+                                .path("content")
+                                .get(0);
 
-        assertNotNull(transaction);
+                assertNotNull(transaction);
 
-        assertFalse(transaction.has("userId"));
-    }
+                assertFalse(transaction.has("userId"));
+        }
 }

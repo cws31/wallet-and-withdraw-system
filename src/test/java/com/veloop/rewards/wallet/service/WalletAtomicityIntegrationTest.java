@@ -25,100 +25,100 @@ import static org.mockito.Mockito.doThrow;
 @SpringBootTest
 class WalletAtomicityIntegrationTest {
 
-    @Autowired
-    private WalletService walletService;
+        @Autowired
+        private WalletService walletService;
 
-    @Autowired
-    private WalletRepository walletRepository;
+        @Autowired
+        private WalletRepository walletRepository;
 
-    @Autowired
-    private WalletTransactionRepository walletTransactionRepository;
+        @Autowired
+        private WalletTransactionRepository walletTransactionRepository;
 
-    @Autowired
-    private UserRepository userRepository;
+        @Autowired
+        private UserRepository userRepository;
 
-    @Autowired
-    private PasswordEncoder passwordEncoder;
+        @Autowired
+        private PasswordEncoder passwordEncoder;
 
-    @MockitoBean
-    private WalletTransactionService walletTransactionService;
+        @MockitoBean
+        private WalletTransactionService walletTransactionService;
 
-    private Long testUserId;
+        private Long testUserId;
 
-    @BeforeEach
-    void setUp() {
+        @BeforeEach
+        void setUp() {
 
-        User user = User.builder()
-                .name("Atomicity Test User")
-                .email(
-                        "atomicity-"
-                                + System.nanoTime()
-                                + "@example.com")
-                .passwordHash(
-                        passwordEncoder.encode("Password@123"))
-                .role("USER")
-                .accountStatus("ACTIVE")
-                .verified(false)
-                .level(0)
-                .build();
+                User user = User.builder()
+                                .name("Atomicity Test User")
+                                .email(
+                                                "atomicity-"
+                                                                + System.nanoTime()
+                                                                + "@example.com")
+                                .passwordHash(
+                                                passwordEncoder.encode("Password@123"))
+                                .role("USER")
+                                .accountStatus("ACTIVE")
+                                .verified(false)
+                                .level(0)
+                                .build();
 
-        User savedUser = userRepository.saveAndFlush(user);
+                User savedUser = userRepository.saveAndFlush(user);
 
-        walletService.createWallet(
-                savedUser.getId());
+                walletService.createWallet(
+                                savedUser.getId());
 
-        testUserId = savedUser.getId();
-    }
+                testUserId = savedUser.getId();
+        }
 
-    @Test
-    void shouldRollbackWalletUpdateWhenLedgerCreationFails() {
+        @Test
+        void shouldRollbackWalletUpdateWhenLedgerCreationFails() {
 
-        String referenceId = "ATOMICITY-" + System.nanoTime();
+                String referenceId = "ATOMICITY-" + System.nanoTime();
 
-        doThrow(
-                new RuntimeException(
-                        "Simulated ledger failure"))
-                .when(walletTransactionService)
-                .createTransaction(
-                        anyLong(),
-                        anyLong(),
-                        any(Currency.class),
-                        any(TransactionType.class),
-                        any(BigDecimal.class),
-                        any(BigDecimal.class),
-                        any(BigDecimal.class),
-                        anyString(),
-                        anyString(),
-                        any(TransactionStatus.class),
-                        anyString(),
-                        any());
+                doThrow(
+                                new RuntimeException(
+                                                "Simulated ledger failure"))
+                                .when(walletTransactionService)
+                                .createTransaction(
+                                                anyLong(),
+                                                anyLong(),
+                                                any(Currency.class),
+                                                any(TransactionType.class),
+                                                any(BigDecimal.class),
+                                                any(BigDecimal.class),
+                                                any(BigDecimal.class),
+                                                anyString(),
+                                                anyString(),
+                                                any(TransactionStatus.class),
+                                                anyString(),
+                                                any());
 
-        assertThrows(
-                RuntimeException.class,
-                () -> walletService.creditWallet(
-                        testUserId,
-                        new WalletCreditRequest(
-                                Currency.VES,
-                                new BigDecimal("1000"),
-                                TransactionType.REWARD,
-                                "TEST",
-                                referenceId,
-                                "Atomicity test",
-                                null)));
+                assertThrows(
+                                RuntimeException.class,
+                                () -> walletService.creditWallet(
+                                                testUserId,
+                                                new WalletCreditRequest(
+                                                                Currency.VES,
+                                                                new BigDecimal("1000"),
+                                                                TransactionType.REWARD,
+                                                                "TEST",
+                                                                referenceId,
+                                                                "Atomicity test",
+                                                                null)));
 
-        Wallet walletAfterFailure = walletRepository
-                .findByUserId(testUserId)
-                .orElseThrow();
+                Wallet walletAfterFailure = walletRepository
+                                .findByUserId(testUserId)
+                                .orElseThrow();
 
-        assertEquals(
-                0,
-                walletAfterFailure
-                        .getVes()
-                        .compareTo(BigDecimal.ZERO));
+                assertEquals(
+                                0,
+                                walletAfterFailure
+                                                .getVes()
+                                                .compareTo(BigDecimal.ZERO));
 
-        assertTrue(
-                walletTransactionRepository
-                        .findByReferenceId(referenceId)
-                        .isEmpty());
-    }
+                assertTrue(
+                                walletTransactionRepository
+                                                .findByReferenceId(referenceId)
+                                                .isEmpty());
+        }
 }

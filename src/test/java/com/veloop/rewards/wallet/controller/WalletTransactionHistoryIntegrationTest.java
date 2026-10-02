@@ -24,163 +24,163 @@ import static org.junit.jupiter.api.Assertions.*;
 @SpringBootTest
 class WalletTransactionHistoryIntegrationTest {
 
-    @Autowired
-    private WalletService walletService;
+        @Autowired
+        private WalletService walletService;
 
-    @Autowired
-    private WalletTransactionService walletTransactionService;
+        @Autowired
+        private WalletTransactionService walletTransactionService;
 
-    @Autowired
-    private WalletTransactionRepository transactionRepository;
+        @Autowired
+        private WalletTransactionRepository transactionRepository;
 
-    @Autowired
-    private UserRepository userRepository;
+        @Autowired
+        private UserRepository userRepository;
 
-    @Autowired
-    private PasswordEncoder passwordEncoder;
+        @Autowired
+        private PasswordEncoder passwordEncoder;
 
-    private Long testUserId;
+        private Long testUserId;
 
-    @BeforeEach
-    void setUp() {
+        @BeforeEach
+        void setUp() {
 
-        User user = User.builder()
-                .name("Transaction History Test User")
-                .email("history-" + System.nanoTime() + "@example.com")
-                .passwordHash(passwordEncoder.encode("Password@123"))
-                .role("USER")
-                .accountStatus("ACTIVE")
-                .verified(false)
-                .level(0)
-                .build();
+                User user = User.builder()
+                                .name("Transaction History Test User")
+                                .email("history-" + System.nanoTime() + "@example.com")
+                                .passwordHash(passwordEncoder.encode("Password@123"))
+                                .role("USER")
+                                .accountStatus("ACTIVE")
+                                .verified(false)
+                                .level(0)
+                                .build();
 
-        User savedUser = userRepository.saveAndFlush(user);
+                User savedUser = userRepository.saveAndFlush(user);
 
-        walletService.createWallet(savedUser.getId());
+                walletService.createWallet(savedUser.getId());
 
-        testUserId = savedUser.getId();
+                testUserId = savedUser.getId();
 
-        // Credit 5000 VES
-        walletService.creditWallet(
-                testUserId,
-                new WalletCreditRequest(
-                        Currency.VES,
-                        new BigDecimal("5000"),
-                        TransactionType.REWARD,
-                        "TEST",
-                        "HISTORY-CREDIT-" + System.nanoTime(),
-                        "History credit test",
-                        null));
+                // Credit 5000 VES
+                walletService.creditWallet(
+                                testUserId,
+                                new WalletCreditRequest(
+                                                Currency.VES,
+                                                new BigDecimal("5000"),
+                                                TransactionType.REWARD,
+                                                "TEST",
+                                                "HISTORY-CREDIT-" + System.nanoTime(),
+                                                "History credit test",
+                                                null));
 
-        // Debit 1000 VES
-        walletService.debitWallet(
-                testUserId,
-                new WalletDebitRequest(
-                        Currency.VES,
-                        new BigDecimal("1000"),
-                        TransactionType.WITHDRAWAL,
-                        "TEST",
-                        "HISTORY-DEBIT-" + System.nanoTime(),
-                        "History debit test",
-                        null));
-    }
+                // Debit 1000 VES
+                walletService.debitWallet(
+                                testUserId,
+                                new WalletDebitRequest(
+                                                Currency.VES,
+                                                new BigDecimal("1000"),
+                                                TransactionType.WITHDRAWAL,
+                                                "TEST",
+                                                "HISTORY-DEBIT-" + System.nanoTime(),
+                                                "History debit test",
+                                                null));
+        }
 
-    @Test
-    void shouldReturnUserTransactionHistory() {
+        @Test
+        void shouldReturnUserTransactionHistory() {
 
-        List<WalletTransaction> transactions = transactionRepository
-                .findByUserIdOrderByCreatedAtDesc(
-                        testUserId,
-                        org.springframework.data.domain.PageRequest.of(0, 20))
-                .getContent();
+                List<WalletTransaction> transactions = transactionRepository
+                                .findByUserIdOrderByCreatedAtDesc(
+                                                testUserId,
+                                                org.springframework.data.domain.PageRequest.of(0, 20))
+                                .getContent();
 
-        assertEquals(2, transactions.size());
+                assertEquals(2, transactions.size());
 
-        WalletTransaction credit = transactions.stream()
-                .filter(transaction -> transaction.getTransactionType() == TransactionType.REWARD)
-                .findFirst()
-                .orElseThrow();
+                WalletTransaction credit = transactions.stream()
+                                .filter(transaction -> transaction.getTransactionType() == TransactionType.REWARD)
+                                .findFirst()
+                                .orElseThrow();
 
-        WalletTransaction debit = transactions.stream()
-                .filter(transaction -> transaction.getTransactionType() == TransactionType.WITHDRAWAL)
-                .findFirst()
-                .orElseThrow();
+                WalletTransaction debit = transactions.stream()
+                                .filter(transaction -> transaction.getTransactionType() == TransactionType.WITHDRAWAL)
+                                .findFirst()
+                                .orElseThrow();
 
-        assertEquals(
-                0,
-                credit.getAmount()
-                        .compareTo(new BigDecimal("5000")));
+                assertEquals(
+                                0,
+                                credit.getAmount()
+                                                .compareTo(new BigDecimal("5000")));
 
-        assertEquals(
-                0,
-                debit.getAmount()
-                        .compareTo(new BigDecimal("1000")));
+                assertEquals(
+                                0,
+                                debit.getAmount()
+                                                .compareTo(new BigDecimal("1000")));
 
-        assertEquals(
-                0,
-                debit.getBalanceBefore()
-                        .compareTo(new BigDecimal("5000")));
+                assertEquals(
+                                0,
+                                debit.getBalanceBefore()
+                                                .compareTo(new BigDecimal("5000")));
 
-        assertEquals(
-                0,
-                debit.getBalanceAfter()
-                        .compareTo(new BigDecimal("4000")));
-    }
+                assertEquals(
+                                0,
+                                debit.getBalanceAfter()
+                                                .compareTo(new BigDecimal("4000")));
+        }
 
-    @Test
-    void shouldReturnTransactionsOnlyForRequestedUser() {
+        @Test
+        void shouldReturnTransactionsOnlyForRequestedUser() {
 
-        User anotherUser = User.builder()
-                .name("Another User")
-                .email("another-" + System.nanoTime() + "@example.com")
-                .passwordHash(passwordEncoder.encode("Password@123"))
-                .role("USER")
-                .accountStatus("ACTIVE")
-                .verified(false)
-                .level(0)
-                .build();
+                User anotherUser = User.builder()
+                                .name("Another User")
+                                .email("another-" + System.nanoTime() + "@example.com")
+                                .passwordHash(passwordEncoder.encode("Password@123"))
+                                .role("USER")
+                                .accountStatus("ACTIVE")
+                                .verified(false)
+                                .level(0)
+                                .build();
 
-        User savedAnotherUser = userRepository.saveAndFlush(anotherUser);
+                User savedAnotherUser = userRepository.saveAndFlush(anotherUser);
 
-        walletService.createWallet(savedAnotherUser.getId());
+                walletService.createWallet(savedAnotherUser.getId());
 
-        walletService.creditWallet(
-                savedAnotherUser.getId(),
-                new WalletCreditRequest(
-                        Currency.VES,
-                        new BigDecimal("9000"),
-                        TransactionType.BONUS,
-                        "TEST",
-                        "OTHER-USER-" + System.nanoTime(),
-                        "Other user transaction",
-                        null));
+                walletService.creditWallet(
+                                savedAnotherUser.getId(),
+                                new WalletCreditRequest(
+                                                Currency.VES,
+                                                new BigDecimal("9000"),
+                                                TransactionType.BONUS,
+                                                "TEST",
+                                                "OTHER-USER-" + System.nanoTime(),
+                                                "Other user transaction",
+                                                null));
 
-        List<WalletTransaction> firstUserTransactions = transactionRepository
-                .findByUserIdOrderByCreatedAtDesc(
-                        testUserId,
-                        org.springframework.data.domain.PageRequest.of(0, 20))
-                .getContent();
+                List<WalletTransaction> firstUserTransactions = transactionRepository
+                                .findByUserIdOrderByCreatedAtDesc(
+                                                testUserId,
+                                                org.springframework.data.domain.PageRequest.of(0, 20))
+                                .getContent();
 
-        assertEquals(2, firstUserTransactions.size());
+                assertEquals(2, firstUserTransactions.size());
 
-        assertTrue(
-                firstUserTransactions.stream()
-                        .noneMatch(transaction -> transaction.getUserId()
-                                .equals(savedAnotherUser.getId())));
-    }
+                assertTrue(
+                                firstUserTransactions.stream()
+                                                .noneMatch(transaction -> transaction.getUserId()
+                                                                .equals(savedAnotherUser.getId())));
+        }
 
-    @Test
-    void shouldSupportPagination() {
+        @Test
+        void shouldSupportPagination() {
 
-        var firstPage = transactionRepository
-                .findByUserIdOrderByCreatedAtDesc(
-                        testUserId,
-                        org.springframework.data.domain.PageRequest.of(0, 1));
+                var firstPage = transactionRepository
+                                .findByUserIdOrderByCreatedAtDesc(
+                                                testUserId,
+                                                org.springframework.data.domain.PageRequest.of(0, 1));
 
-        assertEquals(1, firstPage.getContent().size());
+                assertEquals(1, firstPage.getContent().size());
 
-        assertEquals(2, firstPage.getTotalElements());
+                assertEquals(2, firstPage.getTotalElements());
 
-        assertEquals(2, firstPage.getTotalPages());
-    }
+                assertEquals(2, firstPage.getTotalPages());
+        }
 }

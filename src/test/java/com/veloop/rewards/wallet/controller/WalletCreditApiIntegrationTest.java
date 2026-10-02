@@ -33,217 +33,217 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @AutoConfigureMockMvc
 class WalletCreditApiIntegrationTest {
 
-    @Autowired
-    private MockMvc mockMvc;
+        @Autowired
+        private MockMvc mockMvc;
 
-    @Autowired
-    private ObjectMapper objectMapper;
+        @Autowired
+        private ObjectMapper objectMapper;
 
-    @Autowired
-    private JwtService jwtService;
+        @Autowired
+        private JwtService jwtService;
 
-    @Autowired
-    private UserRepository userRepository;
+        @Autowired
+        private UserRepository userRepository;
 
-    @Autowired
-    private WalletRepository walletRepository;
+        @Autowired
+        private WalletRepository walletRepository;
 
-    @Autowired
-    private WalletTransactionRepository transactionRepository;
+        @Autowired
+        private WalletTransactionRepository transactionRepository;
 
-    @Autowired
-    private WalletService walletService;
+        @Autowired
+        private WalletService walletService;
 
-    @Autowired
-    private PasswordEncoder passwordEncoder;
+        @Autowired
+        private PasswordEncoder passwordEncoder;
 
-    private User user;
-    private User admin;
+        private User user;
+        private User admin;
 
-    private String userToken;
-    private String adminToken;
+        private String userToken;
+        private String adminToken;
 
-    @BeforeEach
-    void setUp() {
+        @BeforeEach
+        void setUp() {
 
-        user = User.builder()
-                .name("Credit API User")
-                .email("credit-user-" + System.nanoTime() + "@example.com")
-                .passwordHash(passwordEncoder.encode("Password@123"))
-                .role("USER")
-                .accountStatus("ACTIVE")
-                .verified(false)
-                .level(0)
-                .build();
+                user = User.builder()
+                                .name("Credit API User")
+                                .email("credit-user-" + System.nanoTime() + "@example.com")
+                                .passwordHash(passwordEncoder.encode("Password@123"))
+                                .role("USER")
+                                .accountStatus("ACTIVE")
+                                .verified(false)
+                                .level(0)
+                                .build();
 
-        user = userRepository.saveAndFlush(user);
+                user = userRepository.saveAndFlush(user);
 
-        walletService.createWallet(user.getId());
+                walletService.createWallet(user.getId());
 
-        admin = User.builder()
-                .name("Credit API Admin")
-                .email("credit-admin-" + System.nanoTime() + "@example.com")
-                .passwordHash(passwordEncoder.encode("Password@123"))
-                .role("ADMIN")
-                .accountStatus("ACTIVE")
-                .verified(false)
-                .level(0)
-                .build();
+                admin = User.builder()
+                                .name("Credit API Admin")
+                                .email("credit-admin-" + System.nanoTime() + "@example.com")
+                                .passwordHash(passwordEncoder.encode("Password@123"))
+                                .role("ADMIN")
+                                .accountStatus("ACTIVE")
+                                .verified(false)
+                                .level(0)
+                                .build();
 
-        admin = userRepository.saveAndFlush(admin);
+                admin = userRepository.saveAndFlush(admin);
 
-        walletService.createWallet(admin.getId());
+                walletService.createWallet(admin.getId());
 
-        userToken = jwtService.generateToken(
-                user.getId(),
-                user.getEmail(),
-                user.getRole());
+                userToken = jwtService.generateToken(
+                                user.getId(),
+                                user.getEmail(),
+                                user.getRole());
 
-        adminToken = jwtService.generateToken(
-                admin.getId(),
-                admin.getEmail(),
-                admin.getRole());
-    }
+                adminToken = jwtService.generateToken(
+                                admin.getId(),
+                                admin.getEmail(),
+                                admin.getRole());
+        }
 
-    @Test
-    void shouldRejectCreditWithoutJwt() throws Exception {
+        @Test
+        void shouldRejectCreditWithoutJwt() throws Exception {
 
-        WalletCreditRequest request = new WalletCreditRequest(
-                Currency.VES,
-                new BigDecimal("5000"),
-                TransactionType.REWARD,
-                "ADMIN",
-                "NO-JWT-" + System.nanoTime(),
-                "Unauthorized credit",
-                null);
+                WalletCreditRequest request = new WalletCreditRequest(
+                                Currency.VES,
+                                new BigDecimal("5000"),
+                                TransactionType.REWARD,
+                                "ADMIN",
+                                "NO-JWT-" + System.nanoTime(),
+                                "Unauthorized credit",
+                                null);
 
-        mockMvc.perform(
-                post("/api/wallet/credit")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(request)))
-                .andExpect(status().isUnauthorized());
-    }
+                mockMvc.perform(
+                                post("/api/wallet/credit")
+                                                .contentType(MediaType.APPLICATION_JSON)
+                                                .content(objectMapper.writeValueAsString(request)))
+                                .andExpect(status().isUnauthorized());
+        }
 
-    @Test
-    void shouldRejectCreditForNormalUser() throws Exception {
+        @Test
+        void shouldRejectCreditForNormalUser() throws Exception {
 
-        WalletCreditRequest request = new WalletCreditRequest(
-                Currency.VES,
-                new BigDecimal("5000"),
-                TransactionType.REWARD,
-                "ADMIN",
-                "USER-CREDIT-" + System.nanoTime(),
-                "Normal user credit attempt",
-                null);
+                WalletCreditRequest request = new WalletCreditRequest(
+                                Currency.VES,
+                                new BigDecimal("5000"),
+                                TransactionType.REWARD,
+                                "ADMIN",
+                                "USER-CREDIT-" + System.nanoTime(),
+                                "Normal user credit attempt",
+                                null);
 
-        mockMvc.perform(
-                post("/api/wallet/credit")
-                        .header(
-                                "Authorization",
-                                "Bearer " + userToken)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(request)))
-                .andExpect(status().isForbidden());
+                mockMvc.perform(
+                                post("/api/wallet/credit")
+                                                .header(
+                                                                "Authorization",
+                                                                "Bearer " + userToken)
+                                                .contentType(MediaType.APPLICATION_JSON)
+                                                .content(objectMapper.writeValueAsString(request)))
+                                .andExpect(status().isForbidden());
 
-        Wallet wallet = walletRepository
-                .findByUserId(user.getId())
-                .orElseThrow();
+                Wallet wallet = walletRepository
+                                .findByUserId(user.getId())
+                                .orElseThrow();
 
-        assertEquals(
-                0,
-                wallet.getVes().compareTo(BigDecimal.ZERO));
-    }
+                assertEquals(
+                                0,
+                                wallet.getVes().compareTo(BigDecimal.ZERO));
+        }
 
-    @Test
-    void shouldAllowCreditForAdmin() throws Exception {
+        @Test
+        void shouldAllowCreditForAdmin() throws Exception {
 
-        String referenceId = "ADMIN-CREDIT-" + System.nanoTime();
+                String referenceId = "ADMIN-CREDIT-" + System.nanoTime();
 
-        WalletCreditRequest request = new WalletCreditRequest(
-                Currency.VES,
-                new BigDecimal("5000"),
-                TransactionType.REWARD,
-                "ADMIN",
-                referenceId,
-                "Admin reward credit",
-                null);
+                WalletCreditRequest request = new WalletCreditRequest(
+                                Currency.VES,
+                                new BigDecimal("5000"),
+                                TransactionType.REWARD,
+                                "ADMIN",
+                                referenceId,
+                                "Admin reward credit",
+                                null);
 
-        mockMvc.perform(
-                post("/api/wallet/credit")
-                        .header(
-                                "Authorization",
-                                "Bearer " + adminToken)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(request)))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath(
-                        "$.success",
-                        is(true)))
-                .andExpect(jsonPath(
-                        "$.message",
-                        is("Wallet credited successfully")))
-                .andExpect(jsonPath(
-                        "$.data.ves",
-                        is(5000.0)));
+                mockMvc.perform(
+                                post("/api/wallet/credit")
+                                                .header(
+                                                                "Authorization",
+                                                                "Bearer " + adminToken)
+                                                .contentType(MediaType.APPLICATION_JSON)
+                                                .content(objectMapper.writeValueAsString(request)))
+                                .andExpect(status().isOk())
+                                .andExpect(jsonPath(
+                                                "$.success",
+                                                is(true)))
+                                .andExpect(jsonPath(
+                                                "$.message",
+                                                is("Wallet credited successfully")))
+                                .andExpect(jsonPath(
+                                                "$.data.ves",
+                                                is(5000.0)));
 
-        Wallet wallet = walletRepository
-                .findByUserId(admin.getId())
-                .orElseThrow();
+                Wallet wallet = walletRepository
+                                .findByUserId(admin.getId())
+                                .orElseThrow();
 
-        assertEquals(
-                0,
-                wallet.getVes().compareTo(
-                        new BigDecimal("5000")));
+                assertEquals(
+                                0,
+                                wallet.getVes().compareTo(
+                                                new BigDecimal("5000")));
 
-        WalletTransaction transaction = transactionRepository
-                .findByReferenceId(referenceId)
-                .orElseThrow();
+                WalletTransaction transaction = transactionRepository
+                                .findByReferenceId(referenceId)
+                                .orElseThrow();
 
-        assertEquals(
-                admin.getId(),
-                transaction.getUserId());
+                assertEquals(
+                                admin.getId(),
+                                transaction.getUserId());
 
-        assertEquals(
-                Currency.VES,
-                transaction.getCurrency());
+                assertEquals(
+                                Currency.VES,
+                                transaction.getCurrency());
 
-        assertEquals(
-                0,
-                transaction.getAmount()
-                        .compareTo(new BigDecimal("5000")));
+                assertEquals(
+                                0,
+                                transaction.getAmount()
+                                                .compareTo(new BigDecimal("5000")));
 
-        assertEquals(
-                0,
-                transaction.getBalanceAfter()
-                        .compareTo(new BigDecimal("5000")));
-    }
+                assertEquals(
+                                0,
+                                transaction.getBalanceAfter()
+                                                .compareTo(new BigDecimal("5000")));
+        }
 
-    @Test
-    void shouldRejectInvalidCreditAmount() throws Exception {
+        @Test
+        void shouldRejectInvalidCreditAmount() throws Exception {
 
-        WalletCreditRequest request = new WalletCreditRequest(
-                Currency.VES,
-                BigDecimal.ZERO,
-                TransactionType.REWARD,
-                "ADMIN",
-                "INVALID-" + System.nanoTime(),
-                "Invalid amount",
-                null);
+                WalletCreditRequest request = new WalletCreditRequest(
+                                Currency.VES,
+                                BigDecimal.ZERO,
+                                TransactionType.REWARD,
+                                "ADMIN",
+                                "INVALID-" + System.nanoTime(),
+                                "Invalid amount",
+                                null);
 
-        mockMvc.perform(
-                post("/api/wallet/credit")
-                        .header(
-                                "Authorization",
-                                "Bearer " + adminToken)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(request)))
-                .andExpect(status().isBadRequest());
+                mockMvc.perform(
+                                post("/api/wallet/credit")
+                                                .header(
+                                                                "Authorization",
+                                                                "Bearer " + adminToken)
+                                                .contentType(MediaType.APPLICATION_JSON)
+                                                .content(objectMapper.writeValueAsString(request)))
+                                .andExpect(status().isBadRequest());
 
-        Wallet wallet = walletRepository
-                .findByUserId(admin.getId())
-                .orElseThrow();
+                Wallet wallet = walletRepository
+                                .findByUserId(admin.getId())
+                                .orElseThrow();
 
-        assertTrue(
-                wallet.getVes().compareTo(BigDecimal.ZERO) == 0);
-    }
+                assertTrue(
+                                wallet.getVes().compareTo(BigDecimal.ZERO) == 0);
+        }
 }

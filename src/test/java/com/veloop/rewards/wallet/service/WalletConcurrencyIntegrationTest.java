@@ -23,132 +23,132 @@ import static org.junit.jupiter.api.Assertions.*;
 @SpringBootTest
 class WalletConcurrencyIntegrationTest {
 
-    @Autowired
-    private WalletService walletService;
+        @Autowired
+        private WalletService walletService;
 
-    @Autowired
-    private WalletRepository walletRepository;
+        @Autowired
+        private WalletRepository walletRepository;
 
-    @Autowired
-    private UserRepository userRepository;
+        @Autowired
+        private UserRepository userRepository;
 
-    @Autowired
-    private PasswordEncoder passwordEncoder;
+        @Autowired
+        private PasswordEncoder passwordEncoder;
 
-    private Long testUserId;
+        private Long testUserId;
 
-    @BeforeEach
-    void setUp() {
+        @BeforeEach
+        void setUp() {
 
-        User user = User.builder()
-                .name("Concurrency Test User")
-                .email(
-                        "concurrency-"
-                                + System.nanoTime()
-                                + "@example.com")
-                .passwordHash(
-                        passwordEncoder.encode("Password@123"))
-                .role("USER")
-                .accountStatus("ACTIVE")
-                .verified(false)
-                .level(0)
-                .build();
+                User user = User.builder()
+                                .name("Concurrency Test User")
+                                .email(
+                                                "concurrency-"
+                                                                + System.nanoTime()
+                                                                + "@example.com")
+                                .passwordHash(
+                                                passwordEncoder.encode("Password@123"))
+                                .role("USER")
+                                .accountStatus("ACTIVE")
+                                .verified(false)
+                                .level(0)
+                                .build();
 
-        User savedUser = userRepository.saveAndFlush(user);
+                User savedUser = userRepository.saveAndFlush(user);
 
-        walletService.createWallet(
-                savedUser.getId());
+                walletService.createWallet(
+                                savedUser.getId());
 
-        testUserId = savedUser.getId();
+                testUserId = savedUser.getId();
 
-        walletService.creditWallet(
-                testUserId,
-                new WalletCreditRequest(
-                        Currency.VES,
-                        new BigDecimal("10000"),
-                        TransactionType.REWARD,
-                        "TEST",
-                        "CONCURRENCY-INITIAL",
-                        "Initial concurrency test balance",
-                        null));
-    }
-
-    @Test
-    void shouldAllowOnlyOneConcurrentDebit() throws Exception {
-
-        ExecutorService executor = Executors.newFixedThreadPool(2);
-
-        CountDownLatch startLatch = new CountDownLatch(1);
-
-        Callable<Boolean> debitTask = () -> {
-
-            startLatch.await();
-
-            try {
-
-                walletService.debitWallet(
-                        testUserId,
-                        new WalletDebitRequest(
-                                Currency.VES,
-                                new BigDecimal("8000"),
-                                TransactionType.WITHDRAWAL,
-                                "TEST",
-                                "CONCURRENT-"
-                                        + System.nanoTime(),
-                                "Concurrent debit test",
-                                null));
-
-                return true;
-
-            } catch (ObjectOptimisticLockingFailureException exception) {
-
-                return false;
-
-            } catch (RuntimeException exception) {
-
-                return false;
-            }
-        };
-
-        Future<Boolean> requestA = executor.submit(debitTask);
-
-        Future<Boolean> requestB = executor.submit(debitTask);
-
-        startLatch.countDown();
-
-        boolean resultA = requestA.get(
-                10,
-                TimeUnit.SECONDS);
-
-        boolean resultB = requestB.get(
-                10,
-                TimeUnit.SECONDS);
-
-        executor.shutdown();
-
-        int successfulRequests = 0;
-
-        if (resultA) {
-            successfulRequests++;
+                walletService.creditWallet(
+                                testUserId,
+                                new WalletCreditRequest(
+                                                Currency.VES,
+                                                new BigDecimal("10000"),
+                                                TransactionType.REWARD,
+                                                "TEST",
+                                                "CONCURRENCY-INITIAL",
+                                                "Initial concurrency test balance",
+                                                null));
         }
 
-        if (resultB) {
-            successfulRequests++;
+        @Test
+        void shouldAllowOnlyOneConcurrentDebit() throws Exception {
+
+                ExecutorService executor = Executors.newFixedThreadPool(2);
+
+                CountDownLatch startLatch = new CountDownLatch(1);
+
+                Callable<Boolean> debitTask = () -> {
+
+                        startLatch.await();
+
+                        try {
+
+                                walletService.debitWallet(
+                                                testUserId,
+                                                new WalletDebitRequest(
+                                                                Currency.VES,
+                                                                new BigDecimal("8000"),
+                                                                TransactionType.WITHDRAWAL,
+                                                                "TEST",
+                                                                "CONCURRENT-"
+                                                                                + System.nanoTime(),
+                                                                "Concurrent debit test",
+                                                                null));
+
+                                return true;
+
+                        } catch (ObjectOptimisticLockingFailureException exception) {
+
+                                return false;
+
+                        } catch (RuntimeException exception) {
+
+                                return false;
+                        }
+                };
+
+                Future<Boolean> requestA = executor.submit(debitTask);
+
+                Future<Boolean> requestB = executor.submit(debitTask);
+
+                startLatch.countDown();
+
+                boolean resultA = requestA.get(
+                                10,
+                                TimeUnit.SECONDS);
+
+                boolean resultB = requestB.get(
+                                10,
+                                TimeUnit.SECONDS);
+
+                executor.shutdown();
+
+                int successfulRequests = 0;
+
+                if (resultA) {
+                        successfulRequests++;
+                }
+
+                if (resultB) {
+                        successfulRequests++;
+                }
+
+                assertEquals(
+                                1,
+                                successfulRequests);
+
+                Wallet finalWallet = walletRepository
+                                .findByUserId(testUserId)
+                                .orElseThrow();
+
+                assertEquals(
+                                0,
+                                finalWallet
+                                                .getVes()
+                                                .compareTo(
+                                                                new BigDecimal("2000")));
         }
-
-        assertEquals(
-                1,
-                successfulRequests);
-
-        Wallet finalWallet = walletRepository
-                .findByUserId(testUserId)
-                .orElseThrow();
-
-        assertEquals(
-                0,
-                finalWallet
-                        .getVes()
-                        .compareTo(
-                                new BigDecimal("2000")));
-    }
 }
