@@ -2,135 +2,311 @@ package com.veloop.rewards.security.ratelimit;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.redis.core.StringRedisTemplate;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.*;
 
+@ExtendWith(MockitoExtension.class)
 class RateLimitServiceTest {
+
+    @Mock
+    private StringRedisTemplate redisTemplate;
+
+    private RateLimitProperties properties;
 
     private RateLimitService rateLimitService;
 
     @BeforeEach
     void setUp() {
-        RateLimitProperties properties = new RateLimitProperties();
+
+        properties = new RateLimitProperties();
 
         properties.setEnabled(true);
         properties.setMaxEntries(10_000);
 
-        rateLimitService = new RateLimitService(properties);
+        rateLimitService = new RateLimitService(
+                properties,
+                redisTemplate);
     }
 
     @Test
-    void shouldAllowRequestsWithinLimit() {
+    void shouldAllowRequestWithinLimit() {
 
-        RateLimitDecision first = rateLimitService.check("user-1", 5, 60);
+        when(redisTemplate.execute(
+                any(),
+                anyList(),
+                any()))
+                .thenReturn("1:60");
 
-        RateLimitDecision second = rateLimitService.check("user-1", 5, 60);
+        RateLimitDecision decision = rateLimitService.check(
+                "user:1",
+                5,
+                60);
 
-        RateLimitDecision third = rateLimitService.check("user-1", 5, 60);
+        assertTrue(decision.allowed());
+        assertEquals(
+                0,
+                decision.retryAfterSeconds());
 
-        assertTrue(first.allowed());
-        assertTrue(second.allowed());
-        assertTrue(third.allowed());
-
-        assertEquals(0, first.retryAfterSeconds());
+        verify(redisTemplate, times(1))
+                .execute(
+                        any(),
+                        anyList(),
+                        eq("60"));
     }
 
     @Test
-    void shouldRejectRequestWhenLimitIsExceeded() {
+    void shouldAllowMultipleRequestsWithinLimit() {
 
-        for (int i = 0; i < 5; i++) {
-            RateLimitDecision decision = rateLimitService.check("user-1", 5, 60);
+        when(redisTemplate.execute(
+                any(),
+                anyList(),
+                any()))
+                .thenReturn("1:60")
+                .thenReturn("2:59")
+                .thenReturn("3:58");
 
-            assertTrue(decision.allowed());
-        }
+        assertTrue(
+                rateLimitService.check(
+                        "user:1",
+                        3,
+                        60).allowed());
 
-        RateLimitDecision sixthRequest = rateLimitService.check("user-1", 5, 60);
+        assertTrue(
+                rateLimitService.check(
+                        "user:1",
+                        3,
+                        60).allowed());
 
-        assertFalse(sixthRequest.allowed());
-        assertTrue(sixthRequest.retryAfterSeconds() > 0);
+        assertTrue(
+                rateLimitService.check(
+                        "user:1",
+                        3,
+                        60).allowed());
+
+        verify(redisTemplate, times(3))
+                .execute(
+                        any(),
+                        anyList(),
+                        eq("60"));
     }
 
     @Test
-    void shouldKeepLimitsSeparateForDifferentUsers() {
+    void shouldRejectRequestWhenLimitExceeded() {
 
-        for (int i = 0; i < 5; i++) {
-            RateLimitDecision decision = rateLimitService.check("user-1", 5, 60);
+        when(redisTemplate.execute(
+                any(),
+                anyList(),
+                any()))
+                .thenReturn("6:42");
 
-            assertTrue(decision.allowed());
-        }
+        RateLimitDecision decision = rateLimitService.check(
+                "user:1",
+                5,
+                60);
 
-        RateLimitDecision userOne = rateLimitService.check("user-1", 5, 60);
+        assertFalse(decision.allowed());
 
-        RateLimitDecision userTwo = rateLimitService.check("user-2", 5, 60);
+        assertEquals(
+                42,
+                decision.retryAfterSeconds());
 
-        assertFalse(userOne.allowed());
-        assertTrue(userTwo.allowed());
+        verify(redisTemplate, times(1))
+                .execute(
+                        any(),
+                        anyList(),
+                        eq("60"));
     }
 
     @Test
-    void shouldAllowRequestsWhenRateLimitingIsDisabled() {
+    void shouldUseSeparateBucketsForDifferentUsers() {
 
-        RateLimitProperties properties = new RateLimitProperties();
+        when(redisTemplate.execute(
+                any(),
+                anyList(),
+                any()))
+                .thenReturn("1:60");
 
-        properties.setEnabled(false);
+        RateLimitDecision userOne = rateLimitService.check(
+                "user:1",
+                5,
+                60);
 
-        RateLimitService service = new RateLimitService(properties);
-
-        for (int i = 0; i < 100; i++) {
-
-            RateLimitDecision decision = service.check("user-1", 5, 60);
-
-            assertTrue(decision.allowed());
-        }
-    }
-
-    @Test
-    void shouldNotRateLimitBlankKeys() {
-
-        RateLimitDecision blank = rateLimitService.check("", 5, 60);
-
-        RateLimitDecision nullKey = rateLimitService.check(null, 5, 60);
-
-        assertTrue(blank.allowed());
-        assertTrue(nullKey.allowed());
-    }
-
-    @Test
-    void shouldNotRateLimitInvalidConfiguration() {
-
-        RateLimitDecision zeroLimit = rateLimitService.check("user-1", 0, 60);
-
-        RateLimitDecision zeroWindow = rateLimitService.check("user-2", 5, 0);
-
-        assertTrue(zeroLimit.allowed());
-        assertTrue(zeroWindow.allowed());
-    }
-
-    @Test
-    void shouldCreateSeparateWindowForDifferentKeys() {
-
-        RateLimitDecision userOne = rateLimitService.check("user-1", 1, 60);
-
-        RateLimitDecision userTwo = rateLimitService.check("user-2", 1, 60);
+        RateLimitDecision userTwo = rateLimitService.check(
+                "user:2",
+                5,
+                60);
 
         assertTrue(userOne.allowed());
         assertTrue(userTwo.allowed());
 
-        RateLimitDecision userOneSecond = rateLimitService.check("user-1", 1, 60);
-
-        assertFalse(userOneSecond.allowed());
+        verify(redisTemplate, times(2))
+                .execute(
+                        any(),
+                        anyList(),
+                        eq("60"));
     }
 
     @Test
-    void shouldReturnAtLeastOneSecondForRetryAfter() {
+    void shouldPermitWhenRateLimitingIsDisabled() {
 
-        for (int i = 0; i < 5; i++) {
-            rateLimitService.check("user-1", 5, 60);
-        }
+        properties.setEnabled(false);
 
-        RateLimitDecision decision = rateLimitService.check("user-1", 5, 60);
+        RateLimitDecision decision = rateLimitService.check(
+                "user:1",
+                1,
+                60);
+
+        assertTrue(decision.allowed());
+
+        verifyNoInteractions(redisTemplate);
+    }
+
+    @Test
+    void shouldPermitWhenKeyIsNull() {
+
+        RateLimitDecision decision = rateLimitService.check(
+                null,
+                5,
+                60);
+
+        assertTrue(decision.allowed());
+
+        verifyNoInteractions(redisTemplate);
+    }
+
+    @Test
+    void shouldPermitWhenKeyIsBlank() {
+
+        RateLimitDecision decision = rateLimitService.check(
+                "   ",
+                5,
+                60);
+
+        assertTrue(decision.allowed());
+
+        verifyNoInteractions(redisTemplate);
+    }
+
+    @Test
+    void shouldPermitWhenConfigurationIsInvalid() {
+
+        RateLimitDecision zeroLimit = rateLimitService.check(
+                "user:1",
+                0,
+                60);
+
+        RateLimitDecision negativeLimit = rateLimitService.check(
+                "user:2",
+                -1,
+                60);
+
+        RateLimitDecision zeroWindow = rateLimitService.check(
+                "user:3",
+                5,
+                0);
+
+        RateLimitDecision negativeWindow = rateLimitService.check(
+                "user:4",
+                5,
+                -10);
+
+        assertTrue(zeroLimit.allowed());
+        assertTrue(negativeLimit.allowed());
+        assertTrue(zeroWindow.allowed());
+        assertTrue(negativeWindow.allowed());
+
+        verifyNoInteractions(redisTemplate);
+    }
+
+    @Test
+    void shouldReturnMinimumRetryAfterWhenRedisTtlIsZero() {
+
+        when(redisTemplate.execute(
+                any(),
+                anyList(),
+                any()))
+                .thenReturn("6:0");
+
+        RateLimitDecision decision = rateLimitService.check(
+                "user:1",
+                5,
+                60);
 
         assertFalse(decision.allowed());
-        assertTrue(decision.retryAfterSeconds() >= 1);
+
+        assertEquals(
+                1,
+                decision.retryAfterSeconds());
+    }
+
+    @Test
+    void shouldPermitWhenRedisReturnsNull() {
+
+        when(redisTemplate.execute(
+                any(),
+                anyList(),
+                any()))
+                .thenReturn(null);
+
+        RateLimitDecision decision = rateLimitService.check(
+                "user:1",
+                5,
+                60);
+
+        assertTrue(decision.allowed());
+
+        verify(redisTemplate, times(1))
+                .execute(
+                        any(),
+                        anyList(),
+                        eq("60"));
+    }
+
+    @Test
+    void shouldPermitWhenRedisReturnsInvalidResult() {
+
+        when(redisTemplate.execute(
+                any(),
+                anyList(),
+                any()))
+                .thenReturn("invalid-result");
+
+        RateLimitDecision decision = rateLimitService.check(
+                "user:1",
+                5,
+                60);
+
+        assertTrue(decision.allowed());
+    }
+
+    @Test
+    void shouldFailOpenWhenRedisIsUnavailable() {
+
+        when(redisTemplate.execute(
+                any(),
+                anyList(),
+                any()))
+                .thenThrow(
+                        new RuntimeException(
+                                "Redis connection failed"));
+
+        RateLimitDecision decision = rateLimitService.check(
+                "user:1",
+                5,
+                60);
+
+        assertTrue(decision.allowed());
+
+        verify(redisTemplate, times(1))
+                .execute(
+                        any(),
+                        anyList(),
+                        eq("60"));
     }
 }

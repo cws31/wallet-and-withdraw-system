@@ -1,28 +1,46 @@
 package com.veloop.rewards.security.ratelimit;
 
+import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.stereotype.Service;
 
-import java.time.Duration;
-import java.time.Instant;
-import java.util.Iterator;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.List;
 
 @Service
 public class RateLimitService {
 
+    private static final String KEY_PREFIX = "veloop:ratelimit:";
+    private static final DefaultRedisScript<String> RATE_LIMIT_SCRIPT = new DefaultRedisScript<>(
+            """
+                    local count = redis.call('INCR', KEYS[1])
+
+                    if count == 1 then
+                        redis.call('EXPIRE', KEYS[1], ARGV[1])
+                    end
+
+                    local ttl = redis.call('TTL', KEYS[1])
+
+                    return tostring(count) .. ':' .. tostring(ttl)
+                    """,
+            String.class);
+
     private final RateLimitProperties properties;
 
-    private final Map<String, RequestWindow> requestWindows = new ConcurrentHashMap<>();
+    private final StringRedisTemplate redisTemplate;
 
-    public RateLimitService(RateLimitProperties properties) {
+    public RateLimitService(
+            RateLimitProperties properties,
+            StringRedisTemplate redisTemplate) {
+
         this.properties = properties;
+        this.redisTemplate = redisTemplate;
     }
 
-    public synchronized RateLimitDecision check(
+    public RateLimitDecision check(
             String key,
             int maxRequests,
             int windowSeconds) {
+
         if (!properties.isEnabled()) {
             return RateLimitDecision.permit();
         }
@@ -35,121 +53,51 @@ public class RateLimitService {
             return RateLimitDecision.permit();
         }
 
-        cleanupExpiredEntries(windowSeconds);
+        String redisKey = KEY_PREFIX + key;
 
-        Instant now = Instant.now();
+        try {
 
-        RequestWindow existing = requestWindows.get(key);
+            String result = redisTemplate.execute(
+                    RATE_LIMIT_SCRIPT,
+                    List.of(redisKey),
+                    String.valueOf(windowSeconds));
 
-        /*
-         * No existing window means this is the first request.
-         */
-        if (existing == null) {
+            if (result == null || result.isBlank()) {
+                return RateLimitDecision.permit();
+            }
 
-            requestWindows.put(
-                    key,
-                    new RequestWindow(
-                            now,
-                            1,
-                            windowSeconds));
+            String[] parts = result.split(":", 2);
 
-            return RateLimitDecision.permit();
-        }
+            if (parts.length != 2) {
+                return RateLimitDecision.permit();
+            }
 
-        /*
-         * If the current window has expired,
-         * start a completely new window.
-         */
-        if (hasExpired(existing, now)) {
+            long requestCount = Long.parseLong(parts[0]);
 
-            requestWindows.put(
-                    key,
-                    new RequestWindow(
-                            now,
-                            1,
-                            windowSeconds));
+            long ttl = Long.parseLong(parts[1]);
 
-            return RateLimitDecision.permit();
-        }
+            if (requestCount <= maxRequests) {
+                return RateLimitDecision.permit();
+            }
 
-        /*
-         * The current window is still active and
-         * the maximum number of requests has already
-         * been consumed.
-         */
-        if (existing.requestCount() >= maxRequests) {
+            long retryAfterSeconds = normalizeRetryAfter(ttl);
 
             return RateLimitDecision.reject(
-                    secondsUntilWindowExpires(
-                            existing,
-                            now));
-        }
+                    retryAfterSeconds);
 
-        /*
-         * The request is within the allowed limit.
-         * Increase the counter by one.
-         */
-        RequestWindow updatedWindow = new RequestWindow(
-                existing.windowStart(),
-                existing.requestCount() + 1,
-                existing.windowSeconds());
+        } catch (Exception exception) {
 
-        requestWindows.put(key, updatedWindow);
-
-        return RateLimitDecision.permit();
-    }
-
-    private boolean hasExpired(
-            RequestWindow window,
-            Instant now) {
-        return !now.isBefore(
-                window.windowStart()
-                        .plusSeconds(window.windowSeconds()));
-    }
-
-    private long secondsUntilWindowExpires(
-            RequestWindow window,
-            Instant now) {
-        Instant expiresAt = window.windowStart()
-                .plusSeconds(window.windowSeconds());
-
-        long seconds = Duration.between(now, expiresAt)
-                .getSeconds();
-
-        return Math.max(1, seconds);
-    }
-
-    private void cleanupExpiredEntries(int currentWindowSeconds) {
-
-        int maxEntries = properties.getMaxEntries();
-
-        if (requestWindows.size() <= maxEntries) {
-            return;
-        }
-
-        Instant now = Instant.now();
-
-        Iterator<Map.Entry<String, RequestWindow>> iterator = requestWindows.entrySet().iterator();
-
-        while (iterator.hasNext()) {
-
-            Map.Entry<String, RequestWindow> entry = iterator.next();
-
-            RequestWindow window = entry.getValue();
-
-            if (hasExpired(window, now)) {
-                iterator.remove();
-            }
-
-            if (requestWindows.size() <= maxEntries) {
-                break;
-            }
+            return RateLimitDecision.permit();
         }
     }
 
-    private record RequestWindow(
-            Instant windowStart,
-            int requestCount,
-            int windowSeconds) {
+    private long normalizeRetryAfter(
+            long ttl) {
+
+        if (ttl <= 0) {
+            return 1;
+        }
+
+        return Math.max(1, ttl);
     }
 }

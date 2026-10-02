@@ -3,6 +3,7 @@ package com.veloop.rewards.security.ratelimit;
 import jakarta.servlet.FilterChain;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -11,262 +12,426 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 class RateLimitFilterTest {
 
-    private RateLimitProperties properties;
-    private RateLimitService rateLimitService;
-    private RateLimitFilter rateLimitFilter;
+        private RateLimitProperties properties;
+        private RateLimitService rateLimitService;
+        private RateLimitFilter rateLimitFilter;
 
-    @BeforeEach
-    void setUp() {
+        private StringRedisTemplate redisTemplate;
 
-        SecurityContextHolder.clearContext();
+        @BeforeEach
+        void setUp() {
 
-        properties = new RateLimitProperties();
+                SecurityContextHolder.clearContext();
 
-        properties.setEnabled(true);
+                properties = new RateLimitProperties();
 
-        properties.setLoginRequests(2);
-        properties.setLoginWindowSeconds(60);
+                properties.setEnabled(true);
 
-        properties.setWithdrawalRequests(2);
-        properties.setWithdrawalWindowSeconds(60);
+                properties.setLoginRequests(2);
+                properties.setLoginWindowSeconds(60);
 
-        properties.setWalletMutationRequests(2);
-        properties.setWalletMutationWindowSeconds(60);
+                properties.setWithdrawalRequests(2);
+                properties.setWithdrawalWindowSeconds(60);
 
-        properties.setWithdrawalMutationRequests(2);
-        properties.setWithdrawalMutationWindowSeconds(60);
+                properties.setWalletMutationRequests(2);
+                properties.setWalletMutationWindowSeconds(60);
 
-        properties.setMaxEntries(10_000);
+                properties.setWithdrawalMutationRequests(2);
+                properties.setWithdrawalMutationWindowSeconds(60);
 
-        rateLimitService = new RateLimitService(properties);
+                properties.setMaxEntries(10_000);
 
-        rateLimitFilter = new RateLimitFilter(
-                rateLimitService,
-                properties);
-    }
+                redisTemplate = mock(StringRedisTemplate.class);
 
-    @Test
-    void shouldAllowLoginRequestsWithinLimit() throws Exception {
+                rateLimitService = new RateLimitService(
+                                properties,
+                                redisTemplate);
 
-        MockHttpServletRequest request = new MockHttpServletRequest();
-
-        request.setMethod("POST");
-        request.setRequestURI("/api/auth/login");
-        request.setRemoteAddr("127.0.0.1");
-
-        MockHttpServletResponse response = new MockHttpServletResponse();
-
-        FilterChain filterChain = mock(FilterChain.class);
-
-        rateLimitFilter.doFilter(
-                request,
-                response,
-                filterChain);
-
-        verify(filterChain).doFilter(request, response);
-
-        assertEquals(
-                200,
-                response.getStatus());
-    }
-
-    @Test
-    void shouldRejectLoginRequestWhenLimitIsExceeded()
-            throws Exception {
-
-        FilterChain filterChain = mock(FilterChain.class);
-
-        for (int i = 0; i < 2; i++) {
-
-            MockHttpServletRequest request = new MockHttpServletRequest();
-
-            request.setMethod("POST");
-            request.setRequestURI("/api/auth/login");
-            request.setRemoteAddr("127.0.0.1");
-
-            MockHttpServletResponse response = new MockHttpServletResponse();
-
-            rateLimitFilter.doFilter(
-                    request,
-                    response,
-                    filterChain);
+                rateLimitFilter = new RateLimitFilter(
+                                rateLimitService,
+                                properties);
         }
 
-        MockHttpServletRequest thirdRequest = new MockHttpServletRequest();
+        @Test
+        void shouldAllowLoginRequestsWithinLimit()
+                        throws Exception {
 
-        thirdRequest.setMethod("POST");
-        thirdRequest.setRequestURI("/api/auth/login");
-        thirdRequest.setRemoteAddr("127.0.0.1");
+                when(redisTemplate.execute(
+                                any(),
+                                anyList(),
+                                any()))
+                                .thenReturn("1:60");
 
-        MockHttpServletResponse thirdResponse = new MockHttpServletResponse();
+                MockHttpServletRequest request = new MockHttpServletRequest();
 
-        rateLimitFilter.doFilter(
-                thirdRequest,
-                thirdResponse,
-                filterChain);
+                request.setMethod("POST");
+                request.setRequestURI("/api/auth/login");
+                request.setRemoteAddr("127.0.0.1");
 
-        assertEquals(
-                429,
-                thirdResponse.getStatus());
+                MockHttpServletResponse response = new MockHttpServletResponse();
 
-        assertNotNull(
-                thirdResponse.getHeader("Retry-After"));
+                FilterChain filterChain = mock(FilterChain.class);
 
-        verify(filterChain, times(2))
-                .doFilter(any(), any());
-    }
+                rateLimitFilter.doFilter(
+                                request,
+                                response,
+                                filterChain);
 
-    @Test
-    void shouldUseDifferentRateLimitBucketsForDifferentIps()
-            throws Exception {
+                verify(filterChain)
+                                .doFilter(request, response);
 
-        FilterChain filterChain = mock(FilterChain.class);
-
-        MockHttpServletRequest firstIpRequest = new MockHttpServletRequest();
-
-        firstIpRequest.setMethod("POST");
-        firstIpRequest.setRequestURI("/api/auth/login");
-        firstIpRequest.setRemoteAddr("192.168.1.10");
-
-        MockHttpServletResponse firstIpResponse = new MockHttpServletResponse();
-
-        rateLimitFilter.doFilter(
-                firstIpRequest,
-                firstIpResponse,
-                filterChain);
-
-        MockHttpServletRequest secondIpRequest = new MockHttpServletRequest();
-
-        secondIpRequest.setMethod("POST");
-        secondIpRequest.setRequestURI("/api/auth/login");
-        secondIpRequest.setRemoteAddr("192.168.1.20");
-
-        MockHttpServletResponse secondIpResponse = new MockHttpServletResponse();
-
-        rateLimitFilter.doFilter(
-                secondIpRequest,
-                secondIpResponse,
-                filterChain);
-
-        assertEquals(
-                200,
-                firstIpResponse.getStatus());
-
-        assertEquals(
-                200,
-                secondIpResponse.getStatus());
-    }
-
-    @Test
-    void shouldRateLimitAuthenticatedWithdrawalCreation()
-            throws Exception {
-
-        SecurityContextHolder.getContext().setAuthentication(
-                new UsernamePasswordAuthenticationToken(
-                        100L,
-                        null,
-                        List.of()));
-
-        FilterChain filterChain = mock(FilterChain.class);
-
-        for (int i = 0; i < 2; i++) {
-
-            MockHttpServletRequest request = new MockHttpServletRequest();
-
-            request.setMethod("POST");
-            request.setRequestURI("/api/withdrawals");
-
-            MockHttpServletResponse response = new MockHttpServletResponse();
-
-            rateLimitFilter.doFilter(
-                    request,
-                    response,
-                    filterChain);
+                assertEquals(
+                                200,
+                                response.getStatus());
         }
 
-        MockHttpServletRequest thirdRequest = new MockHttpServletRequest();
+        @Test
+        void shouldRejectLoginRequestWhenLimitIsExceeded()
+                        throws Exception {
 
-        thirdRequest.setMethod("POST");
-        thirdRequest.setRequestURI("/api/withdrawals");
+                when(redisTemplate.execute(
+                                any(),
+                                anyList(),
+                                any()))
+                                .thenReturn(
+                                                "1:60",
+                                                "2:59",
+                                                "3:58");
 
-        MockHttpServletResponse thirdResponse = new MockHttpServletResponse();
+                FilterChain filterChain = mock(FilterChain.class);
 
-        rateLimitFilter.doFilter(
-                thirdRequest,
-                thirdResponse,
-                filterChain);
+                for (int i = 0; i < 2; i++) {
 
-        assertEquals(
-                429,
-                thirdResponse.getStatus());
+                        MockHttpServletRequest request = new MockHttpServletRequest();
 
-        assertNotNull(
-                thirdResponse.getHeader("Retry-After"));
-    }
+                        request.setMethod("POST");
+                        request.setRequestURI(
+                                        "/api/auth/login");
+                        request.setRemoteAddr(
+                                        "127.0.0.1");
 
-    @Test
-    void shouldNotRateLimitUnauthenticatedProtectedRequest()
-            throws Exception {
+                        MockHttpServletResponse response = new MockHttpServletResponse();
 
-        SecurityContextHolder.clearContext();
+                        rateLimitFilter.doFilter(
+                                        request,
+                                        response,
+                                        filterChain);
 
-        MockHttpServletRequest request = new MockHttpServletRequest();
+                        assertEquals(
+                                        200,
+                                        response.getStatus());
+                }
 
-        request.setMethod("GET");
-        request.setRequestURI("/api/wallet");
+                MockHttpServletRequest thirdRequest = new MockHttpServletRequest();
 
-        MockHttpServletResponse response = new MockHttpServletResponse();
+                thirdRequest.setMethod("POST");
+                thirdRequest.setRequestURI(
+                                "/api/auth/login");
+                thirdRequest.setRemoteAddr(
+                                "127.0.0.1");
 
-        FilterChain filterChain = mock(FilterChain.class);
+                MockHttpServletResponse thirdResponse = new MockHttpServletResponse();
 
-        rateLimitFilter.doFilter(
-                request,
-                response,
-                filterChain);
+                rateLimitFilter.doFilter(
+                                thirdRequest,
+                                thirdResponse,
+                                filterChain);
 
-        verify(filterChain).doFilter(
-                request,
-                response);
+                assertEquals(
+                                429,
+                                thirdResponse.getStatus());
 
-        assertEquals(
-                200,
-                response.getStatus());
-    }
+                assertNotNull(
+                                thirdResponse.getHeader(
+                                                "Retry-After"));
 
-    @Test
-    void shouldAllowRequestsWhenRateLimitingIsDisabled()
-            throws Exception {
-
-        properties.setEnabled(false);
-
-        MockHttpServletRequest request = new MockHttpServletRequest();
-
-        request.setMethod("POST");
-        request.setRequestURI("/api/auth/login");
-        request.setRemoteAddr("127.0.0.1");
-
-        MockHttpServletResponse response = new MockHttpServletResponse();
-
-        FilterChain filterChain = mock(FilterChain.class);
-
-        for (int i = 0; i < 10; i++) {
-
-            rateLimitFilter.doFilter(
-                    request,
-                    response,
-                    filterChain);
+                verify(
+                                filterChain,
+                                times(2))
+                                .doFilter(any(), any());
         }
 
-        verify(
-                filterChain,
-                times(10)).doFilter(request, response);
+        @Test
+        void shouldUseDifferentRateLimitBucketsForDifferentIps()
+                        throws Exception {
 
-        assertEquals(
-                200,
-                response.getStatus());
-    }
+                when(redisTemplate.execute(
+                                any(),
+                                anyList(),
+                                any()))
+                                .thenReturn("1:60");
+
+                FilterChain filterChain = mock(FilterChain.class);
+
+                MockHttpServletRequest firstIpRequest = new MockHttpServletRequest();
+
+                firstIpRequest.setMethod("POST");
+                firstIpRequest.setRequestURI(
+                                "/api/auth/login");
+                firstIpRequest.setRemoteAddr(
+                                "192.168.1.10");
+
+                MockHttpServletResponse firstIpResponse = new MockHttpServletResponse();
+
+                rateLimitFilter.doFilter(
+                                firstIpRequest,
+                                firstIpResponse,
+                                filterChain);
+
+                MockHttpServletRequest secondIpRequest = new MockHttpServletRequest();
+
+                secondIpRequest.setMethod("POST");
+                secondIpRequest.setRequestURI(
+                                "/api/auth/login");
+                secondIpRequest.setRemoteAddr(
+                                "192.168.1.20");
+
+                MockHttpServletResponse secondIpResponse = new MockHttpServletResponse();
+
+                rateLimitFilter.doFilter(
+                                secondIpRequest,
+                                secondIpResponse,
+                                filterChain);
+
+                assertEquals(
+                                200,
+                                firstIpResponse.getStatus());
+
+                assertEquals(
+                                200,
+                                secondIpResponse.getStatus());
+
+                verify(
+                                redisTemplate,
+                                times(2))
+                                .execute(
+                                                any(),
+                                                anyList(),
+                                                eq("60"));
+        }
+
+        @Test
+        void shouldRateLimitAuthenticatedWithdrawalCreation()
+                        throws Exception {
+
+                when(redisTemplate.execute(
+                                any(),
+                                anyList(),
+                                any()))
+                                .thenReturn(
+                                                "1:60",
+                                                "2:59",
+                                                "3:58");
+
+                SecurityContextHolder
+                                .getContext()
+                                .setAuthentication(
+                                                new UsernamePasswordAuthenticationToken(
+                                                                100L,
+                                                                null,
+                                                                List.of()));
+
+                FilterChain filterChain = mock(FilterChain.class);
+
+                for (int i = 0; i < 2; i++) {
+
+                        MockHttpServletRequest request = new MockHttpServletRequest();
+
+                        request.setMethod("POST");
+                        request.setRequestURI(
+                                        "/api/withdrawals");
+
+                        MockHttpServletResponse response = new MockHttpServletResponse();
+
+                        rateLimitFilter.doFilter(
+                                        request,
+                                        response,
+                                        filterChain);
+
+                        assertEquals(
+                                        200,
+                                        response.getStatus());
+                }
+
+                MockHttpServletRequest thirdRequest = new MockHttpServletRequest();
+
+                thirdRequest.setMethod("POST");
+                thirdRequest.setRequestURI(
+                                "/api/withdrawals");
+
+                MockHttpServletResponse thirdResponse = new MockHttpServletResponse();
+
+                rateLimitFilter.doFilter(
+                                thirdRequest,
+                                thirdResponse,
+                                filterChain);
+
+                assertEquals(
+                                429,
+                                thirdResponse.getStatus());
+
+                assertNotNull(
+                                thirdResponse.getHeader(
+                                                "Retry-After"));
+        }
+
+        @Test
+        void shouldNotRateLimitUnauthenticatedProtectedRequest()
+                        throws Exception {
+
+                SecurityContextHolder.clearContext();
+
+                MockHttpServletRequest request = new MockHttpServletRequest();
+
+                request.setMethod("GET");
+                request.setRequestURI("/api/wallet");
+
+                MockHttpServletResponse response = new MockHttpServletResponse();
+
+                FilterChain filterChain = mock(FilterChain.class);
+
+                rateLimitFilter.doFilter(
+                                request,
+                                response,
+                                filterChain);
+
+                verify(filterChain)
+                                .doFilter(
+                                                request,
+                                                response);
+
+                assertEquals(
+                                200,
+                                response.getStatus());
+
+                verifyNoInteractions(redisTemplate);
+        }
+
+        @Test
+        void shouldAllowRequestsWhenRateLimitingIsDisabled()
+                        throws Exception {
+
+                properties.setEnabled(false);
+
+                MockHttpServletRequest request = new MockHttpServletRequest();
+
+                request.setMethod("POST");
+                request.setRequestURI(
+                                "/api/auth/login");
+                request.setRemoteAddr(
+                                "127.0.0.1");
+
+                MockHttpServletResponse response = new MockHttpServletResponse();
+
+                FilterChain filterChain = mock(FilterChain.class);
+
+                for (int i = 0; i < 10; i++) {
+
+                        rateLimitFilter.doFilter(
+                                        request,
+                                        response,
+                                        filterChain);
+                }
+
+                verify(
+                                filterChain,
+                                times(10))
+                                .doFilter(
+                                                request,
+                                                response);
+
+                assertEquals(
+                                200,
+                                response.getStatus());
+
+                verifyNoInteractions(redisTemplate);
+        }
+
+        @Test
+        void shouldUseForwardedClientIp()
+                        throws Exception {
+
+                when(redisTemplate.execute(
+                                any(),
+                                anyList(),
+                                any()))
+                                .thenReturn("1:60");
+
+                MockHttpServletRequest request = new MockHttpServletRequest();
+
+                request.setMethod("POST");
+                request.setRequestURI(
+                                "/api/auth/login");
+
+                request.setRemoteAddr(
+                                "192.168.1.10");
+
+                request.addHeader(
+                                "X-Forwarded-For",
+                                "10.0.0.1, 192.168.1.20");
+
+                MockHttpServletResponse response = new MockHttpServletResponse();
+
+                FilterChain filterChain = mock(FilterChain.class);
+
+                rateLimitFilter.doFilter(
+                                request,
+                                response,
+                                filterChain);
+
+                assertEquals(
+                                200,
+                                response.getStatus());
+
+                verify(redisTemplate)
+                                .execute(
+                                                any(),
+                                                anyList(),
+                                                eq("60"));
+        }
+
+        @Test
+        void shouldFailOpenWhenRedisIsUnavailable()
+                        throws Exception {
+
+                when(redisTemplate.execute(
+                                any(),
+                                anyList(),
+                                any()))
+                                .thenThrow(
+                                                new RuntimeException(
+                                                                "Redis unavailable"));
+
+                MockHttpServletRequest request = new MockHttpServletRequest();
+
+                request.setMethod("POST");
+                request.setRequestURI(
+                                "/api/auth/login");
+
+                request.setRemoteAddr(
+                                "127.0.0.1");
+
+                MockHttpServletResponse response = new MockHttpServletResponse();
+
+                FilterChain filterChain = mock(FilterChain.class);
+
+                rateLimitFilter.doFilter(
+                                request,
+                                response,
+                                filterChain);
+
+                assertEquals(
+                                200,
+                                response.getStatus());
+
+                verify(filterChain)
+                                .doFilter(
+                                                request,
+                                                response);
+        }
 }
