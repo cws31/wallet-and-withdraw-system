@@ -3,6 +3,7 @@ package com.veloop.rewards.withdrawal.dto;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.Size;
 
 public class WithdrawalCreateRequest {
 
@@ -15,6 +16,7 @@ public class WithdrawalCreateRequest {
     private Long payoutOptionId;
 
     @NotBlank(message = "Payout details are required")
+    @Size(max = 320, message = "Payout details must not exceed 320 characters")
     private String payoutDetails;
 
     public Long getPayoutMethodId() {

@@ -247,6 +247,52 @@ class WithdrawalApiIntegrationTest {
     }
 
     @Test
+    void shouldRejectScriptLikePayoutDetails()
+            throws Exception {
+
+        String maliciousPayoutDetails = "<script>alert('xss')</script>";
+
+        String requestBody = """
+                {
+                  "payoutMethodId": %d,
+                  "payoutOptionId": %d,
+                  "payoutDetails": "%s"
+                }
+                """.formatted(
+                payoutMethod.getId(),
+                payoutOption.getId(),
+                maliciousPayoutDetails);
+
+        mockMvc.perform(
+                post("/api/withdrawals")
+                        .header(
+                                HttpHeaders.AUTHORIZATION,
+                                "Bearer " + jwtToken)
+                        .header(
+                                "Idempotency-Key",
+                                "script-details-"
+                                        + UUID.randomUUID())
+                        .contentType(
+                                MediaType.APPLICATION_JSON)
+                        .content(requestBody))
+                .andExpect(
+                        status().isBadRequest())
+                .andExpect(
+                        jsonPath(
+                                "$.message",
+                                is("Invalid UPI ID")));
+
+        Wallet currentWallet = walletService.getWallet(
+                testUser.getId());
+
+        assertEquals(
+                0,
+                currentWallet
+                        .getVes()
+                        .compareTo(new BigDecimal("5000")));
+    }
+
+    @Test
     void shouldRejectBlankPayoutDetailsThroughHttpApi()
             throws Exception {
 
@@ -280,6 +326,57 @@ class WithdrawalApiIntegrationTest {
                         jsonPath(
                                 "$.errors.payoutDetails",
                                 is("Payout details are required")));
+    }
+
+    @Test
+    void shouldRejectOversizedPayoutDetails()
+            throws Exception {
+
+        String oversizedPayoutDetails = "A".repeat(321);
+
+        String requestBody = """
+                {
+                  "payoutMethodId": %d,
+                  "payoutOptionId": %d,
+                  "payoutDetails": "%s"
+                }
+                """.formatted(
+                payoutMethod.getId(),
+                payoutOption.getId(),
+                oversizedPayoutDetails);
+
+        mockMvc.perform(
+                post("/api/withdrawals")
+                        .header(
+                                HttpHeaders.AUTHORIZATION,
+                                "Bearer " + jwtToken)
+                        .header(
+                                "Idempotency-Key",
+                                "oversized-details-"
+                                        + UUID.randomUUID())
+                        .contentType(
+                                MediaType.APPLICATION_JSON)
+                        .content(requestBody))
+                .andExpect(
+                        status().isBadRequest())
+                .andExpect(
+                        jsonPath(
+                                "$.message",
+                                is("Validation failed")))
+                .andExpect(
+                        jsonPath(
+                                "$.errors.payoutDetails",
+                                is(
+                                        "Payout details must not exceed 320 characters")));
+
+        Wallet currentWallet = walletService.getWallet(
+                testUser.getId());
+
+        assertEquals(
+                0,
+                currentWallet
+                        .getVes()
+                        .compareTo(new BigDecimal("5000")));
     }
 
     @Test
