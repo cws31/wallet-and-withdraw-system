@@ -48,6 +48,9 @@ public class SecurityConfig {
                         HttpSecurity http) throws Exception {
 
                 http
+                                .cors(cors -> {
+                                })
+
                                 .csrf(csrf -> csrf.disable())
 
                                 .sessionManagement(session -> session
@@ -71,7 +74,9 @@ public class SecurityConfig {
 
                                                                 "/swagger-ui.html",
                                                                 "/swagger-ui/**",
-                                                                "/v3/api-docs/**")
+                                                                "/v3/api-docs/**",
+
+                                                                "/actuator/health")
                                                 .permitAll()
                                                 .anyRequest()
                                                 .authenticated())
