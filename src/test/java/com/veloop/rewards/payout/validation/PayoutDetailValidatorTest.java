@@ -1,5 +1,6 @@
 package com.veloop.rewards.payout.validation;
 
+import com.veloop.rewards.common.exception.InvalidWithdrawalRequestException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -33,8 +34,8 @@ class PayoutDetailValidatorTest {
     @Test
     void shouldRejectInvalidUpiIdWithoutAtSymbol() {
 
-        IllegalArgumentException exception = assertThrows(
-                IllegalArgumentException.class,
+        InvalidWithdrawalRequestException exception = assertThrows(
+                InvalidWithdrawalRequestException.class,
                 () -> validator.validate(
                         "UPI",
                         "vijayupi"));
@@ -47,8 +48,8 @@ class PayoutDetailValidatorTest {
     @Test
     void shouldRejectInvalidUpiIdWithMissingProvider() {
 
-        IllegalArgumentException exception = assertThrows(
-                IllegalArgumentException.class,
+        InvalidWithdrawalRequestException exception = assertThrows(
+                InvalidWithdrawalRequestException.class,
                 () -> validator.validate(
                         "UPI",
                         "vijay@"));
@@ -61,8 +62,8 @@ class PayoutDetailValidatorTest {
     @Test
     void shouldRejectBlankPayoutDetails() {
 
-        IllegalArgumentException exception = assertThrows(
-                IllegalArgumentException.class,
+        InvalidWithdrawalRequestException exception = assertThrows(
+                InvalidWithdrawalRequestException.class,
                 () -> validator.validate(
                         "UPI",
                         "   "));
@@ -75,8 +76,8 @@ class PayoutDetailValidatorTest {
     @Test
     void shouldRejectNullPayoutDetails() {
 
-        IllegalArgumentException exception = assertThrows(
-                IllegalArgumentException.class,
+        InvalidWithdrawalRequestException exception = assertThrows(
+                InvalidWithdrawalRequestException.class,
                 () -> validator.validate(
                         "UPI",
                         null));
@@ -89,8 +90,8 @@ class PayoutDetailValidatorTest {
     @Test
     void shouldRejectBlankPayoutMethod() {
 
-        IllegalArgumentException exception = assertThrows(
-                IllegalArgumentException.class,
+        InvalidWithdrawalRequestException exception = assertThrows(
+                InvalidWithdrawalRequestException.class,
                 () -> validator.validate(
                         "   ",
                         "vijay@upi"));

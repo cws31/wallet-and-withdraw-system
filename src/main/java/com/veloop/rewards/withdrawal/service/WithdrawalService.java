@@ -15,6 +15,7 @@ import com.veloop.rewards.payout.entity.PayoutMethod;
 import com.veloop.rewards.payout.entity.PayoutOption;
 import com.veloop.rewards.payout.repository.PayoutMethodRepository;
 import com.veloop.rewards.payout.repository.PayoutOptionRepository;
+import com.veloop.rewards.payout.validation.PayoutDetailValidator;
 import com.veloop.rewards.user.entity.User;
 import com.veloop.rewards.user.repository.UserRepository;
 import com.veloop.rewards.wallet.dto.WalletCreditRequest;
@@ -44,6 +45,7 @@ public class WithdrawalService {
         private final WithdrawalRepository withdrawalRepository;
         private final PayoutMethodRepository payoutMethodRepository;
         private final PayoutOptionRepository payoutOptionRepository;
+        private final PayoutDetailValidator payoutDetailValidator;
         private final WalletService walletService;
         private final WalletTransactionRepository walletTransactionRepository;
         private final UserRepository userRepository;
@@ -59,6 +61,7 @@ public class WithdrawalService {
                         UserRepository userRepository,
                         PayoutMethodRepository payoutMethodRepository,
                         PayoutOptionRepository payoutOptionRepository,
+                        PayoutDetailValidator payoutDetailValidator,
                         WithdrawalAuditService withdrawalAuditService,
                         AuditLogService auditLogService) {
 
@@ -69,6 +72,7 @@ public class WithdrawalService {
                 this.userRepository = userRepository;
                 this.payoutMethodRepository = payoutMethodRepository;
                 this.payoutOptionRepository = payoutOptionRepository;
+                this.payoutDetailValidator = payoutDetailValidator;
                 this.withdrawalAuditService = withdrawalAuditService;
                 this.auditLogService = auditLogService;
         }
@@ -79,9 +83,11 @@ public class WithdrawalService {
                         String idempotencyKey,
                         WithdrawalCreateRequest request) {
 
-                String normalizedIdempotencyKey = withdrawalIdempotencyService.validateAndNormalizeKey(idempotencyKey);
+                String normalizedIdempotencyKey = withdrawalIdempotencyService
+                                .validateAndNormalizeKey(idempotencyKey);
 
-                String requestFingerprint = withdrawalIdempotencyService.createRequestFingerprint(request);
+                String requestFingerprint = withdrawalIdempotencyService
+                                .createRequestFingerprint(request);
 
                 WithdrawalIdempotency existing = withdrawalIdempotencyService
                                 .findExisting(userId, normalizedIdempotencyKey)
@@ -101,7 +107,8 @@ public class WithdrawalService {
                 }
 
                 User user = userRepository.findById(userId)
-                                .orElseThrow(() -> new InvalidWithdrawalRequestException("User not found"));
+                                .orElseThrow(() -> new InvalidWithdrawalRequestException(
+                                                "User not found"));
 
                 PayoutMethod payoutMethod = payoutMethodRepository
                                 .findById(request.getPayoutMethodId())
@@ -112,6 +119,10 @@ public class WithdrawalService {
                         throw new InvalidWithdrawalRequestException(
                                         "Selected payout method is inactive");
                 }
+
+                payoutDetailValidator.validate(
+                                payoutMethod.getCode(),
+                                request.getPayoutDetails());
 
                 PayoutOption payoutOption = payoutOptionRepository
                                 .findById(request.getPayoutOptionId())

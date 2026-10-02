@@ -1,5 +1,6 @@
 package com.veloop.rewards.payout.validation;
 
+import com.veloop.rewards.common.exception.InvalidWithdrawalRequestException;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -14,14 +15,14 @@ public class PayoutDetailValidator {
         if (payoutMethodCode == null
                 || payoutMethodCode.isBlank()) {
 
-            throw new IllegalArgumentException(
+            throw new InvalidWithdrawalRequestException(
                     "Payout method is required");
         }
 
         if (payoutDetails == null
                 || payoutDetails.isBlank()) {
 
-            throw new IllegalArgumentException(
+            throw new InvalidWithdrawalRequestException(
                     "Payout details are required");
         }
 
@@ -34,16 +35,16 @@ public class PayoutDetailValidator {
             case UPI -> validateUpi(details);
 
             default -> {
-
             }
         }
     }
 
     private void validateUpi(String payoutDetails) {
+
         if (!payoutDetails.matches(
                 "^[A-Za-z0-9._-]{2,256}@[A-Za-z0-9.-]{2,64}$")) {
 
-            throw new IllegalArgumentException(
+            throw new InvalidWithdrawalRequestException(
                     "Invalid UPI ID");
         }
     }
