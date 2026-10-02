@@ -20,18 +20,22 @@ import com.veloop.rewards.withdrawal.dto.WithdrawalResponse;
 import com.veloop.rewards.withdrawal.enums.WithdrawalStatus;
 import com.veloop.rewards.withdrawal.repository.WithdrawalRepository;
 import com.veloop.rewards.withdrawal.service.WithdrawalService;
+
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
+
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
-import org.junit.jupiter.api.AfterEach;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 @SpringBootTest
@@ -81,6 +85,9 @@ class WithdrawalConcurrencyIntegrationTest {
                 user.setPasswordHash("test-password");
                 user.setName("Withdrawal Concurrency Test User");
 
+                user.setAccountStatus("ACTIVE");
+                user.setVerified(true);
+
                 User savedUser = userRepository.save(user);
 
                 testUserId = savedUser.getId();
@@ -117,6 +124,7 @@ class WithdrawalConcurrencyIntegrationTest {
 
         @AfterEach
         void tearDown() {
+
                 if (testUserId == null) {
                         return;
                 }
@@ -136,22 +144,6 @@ class WithdrawalConcurrencyIntegrationTest {
                 jdbcTemplate.update("""
                                 DELETE FROM audit_log
                                 WHERE actor_id = ?
-                                """,
-                                testUserId);
-
-                jdbcTemplate.update("""
-                                DELETE FROM withdrawal_audit
-                                WHERE user_id = ?
-                                """,
-                                testUserId);
-
-                if (testUserId == null) {
-                        return;
-                }
-
-                jdbcTemplate.update("""
-                                DELETE FROM withdrawal_idempotency
-                                WHERE user_id = ?
                                 """,
                                 testUserId);
 
@@ -287,7 +279,8 @@ class WithdrawalConcurrencyIntegrationTest {
 
                 assertNotNull(failedException);
 
-                Wallet wallet = walletRepository.findByUserId(testUserId)
+                Wallet wallet = walletRepository
+                                .findByUserId(testUserId)
                                 .orElseThrow();
 
                 assertEquals(

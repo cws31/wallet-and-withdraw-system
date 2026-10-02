@@ -28,7 +28,6 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -69,6 +68,13 @@ class WithdrawalServiceIntegrationTest {
 
                 String uniqueId = String.valueOf(System.nanoTime());
 
+                /*
+                 * Primary withdrawal test user.
+                 *
+                 * Phase 9 eligibility requires:
+                 * 1. accountStatus = ACTIVE
+                 * 2. verified = true
+                 */
                 User user = new User();
 
                 user.setEmail(
@@ -76,11 +82,18 @@ class WithdrawalServiceIntegrationTest {
 
                 user.setPasswordHash("test-password");
                 user.setName("Withdrawal Test User");
+                user.setAccountStatus("ACTIVE");
+                user.setVerified(true);
 
                 user = userRepository.save(user);
 
                 testUserId = user.getId();
 
+                /*
+                 * Second user is also created as an eligible user.
+                 * This keeps authorization/access-control tests focused
+                 * on ownership rather than account eligibility.
+                 */
                 User secondUser = new User();
 
                 secondUser.setEmail(
@@ -88,11 +101,20 @@ class WithdrawalServiceIntegrationTest {
 
                 secondUser.setPasswordHash("test-password");
                 secondUser.setName("Withdrawal Test User 2");
+                secondUser.setAccountStatus("ACTIVE");
+                secondUser.setVerified(true);
 
                 secondUser = userRepository.save(secondUser);
 
                 secondUserId = secondUser.getId();
 
+                /*
+                 * Admin user.
+                 *
+                 * Admin operations do not depend on withdrawal eligibility,
+                 * but keeping the fixture explicit avoids relying on entity
+                 * defaults.
+                 */
                 User adminUser = new User();
 
                 adminUser.setEmail(
@@ -100,6 +122,8 @@ class WithdrawalServiceIntegrationTest {
 
                 adminUser.setPasswordHash("test-password");
                 adminUser.setName("Withdrawal Test Admin");
+                adminUser.setAccountStatus("ACTIVE");
+                adminUser.setVerified(true);
 
                 adminUser = userRepository.save(adminUser);
 

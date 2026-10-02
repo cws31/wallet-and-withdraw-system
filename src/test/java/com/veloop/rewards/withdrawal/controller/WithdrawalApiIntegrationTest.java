@@ -1,5 +1,6 @@
 package com.veloop.rewards.withdrawal.controller;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.veloop.rewards.payout.entity.PayoutMethod;
 import com.veloop.rewards.payout.entity.PayoutOption;
 import com.veloop.rewards.payout.repository.PayoutMethodRepository;
@@ -13,7 +14,6 @@ import com.veloop.rewards.wallet.enums.Currency;
 import com.veloop.rewards.wallet.enums.TransactionType;
 import com.veloop.rewards.wallet.repository.WalletRepository;
 import com.veloop.rewards.wallet.service.WalletService;
-import com.fasterxml.jackson.databind.ObjectMapper;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -27,7 +27,6 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.math.BigDecimal;
-import java.util.Map;
 import java.util.UUID;
 
 import static org.hamcrest.Matchers.is;
@@ -92,7 +91,7 @@ class WithdrawalApiIntegrationTest {
                         passwordEncoder.encode("Password@123"))
                 .role("USER")
                 .accountStatus("ACTIVE")
-                .verified(false)
+                .verified(true)
                 .level(0)
                 .build();
 
@@ -251,33 +250,36 @@ class WithdrawalApiIntegrationTest {
     void shouldRejectBlankPayoutDetailsThroughHttpApi()
             throws Exception {
 
-        String requestBody = """
-                {
-                  "payoutMethodId": %d,
-                  "payoutOptionId": %d,
-                  "payoutDetails": "   "
-                }
-                """.formatted(
-                payoutMethod.getId(),
-                payoutOption.getId());
-
-        mockMvc.perform(post("/api/withdrawals")
-                .header(HttpHeaders.AUTHORIZATION, "Bearer " + jwtToken)
-                .header("Idempotency-Key", "blank-details-" + UUID.randomUUID())
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("""
-                        {
-                          "payoutMethodId": %d,
-                          "payoutOptionId": %d,
-                          "payoutDetails": ""
-                        }
-                        """.formatted(
-                        payoutMethod.getId(),
-                        payoutOption.getId())))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.message", is("Validation failed")))
-                .andExpect(jsonPath("$.errors.payoutDetails",
-                        is("Payout details are required")));
+        mockMvc.perform(
+                post("/api/withdrawals")
+                        .header(
+                                HttpHeaders.AUTHORIZATION,
+                                "Bearer " + jwtToken)
+                        .header(
+                                "Idempotency-Key",
+                                "blank-details-"
+                                        + UUID.randomUUID())
+                        .contentType(
+                                MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "payoutMethodId": %d,
+                                  "payoutOptionId": %d,
+                                  "payoutDetails": ""
+                                }
+                                """.formatted(
+                                payoutMethod.getId(),
+                                payoutOption.getId())))
+                .andExpect(
+                        status().isBadRequest())
+                .andExpect(
+                        jsonPath(
+                                "$.message",
+                                is("Validation failed")))
+                .andExpect(
+                        jsonPath(
+                                "$.errors.payoutDetails",
+                                is("Payout details are required")));
     }
 
     @Test

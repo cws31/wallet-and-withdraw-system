@@ -52,6 +52,7 @@ public class WithdrawalService {
         private final WithdrawalIdempotencyService withdrawalIdempotencyService;
         private final WithdrawalAuditService withdrawalAuditService;
         private final AuditLogService auditLogService;
+        private final WithdrawalEligibilityService withdrawalEligibilityService;
 
         public WithdrawalService(
                         WithdrawalRepository withdrawalRepository,
@@ -63,7 +64,8 @@ public class WithdrawalService {
                         PayoutOptionRepository payoutOptionRepository,
                         PayoutDetailValidator payoutDetailValidator,
                         WithdrawalAuditService withdrawalAuditService,
-                        AuditLogService auditLogService) {
+                        AuditLogService auditLogService,
+                        WithdrawalEligibilityService withdrawalEligibilityService) {
 
                 this.withdrawalRepository = withdrawalRepository;
                 this.withdrawalIdempotencyService = withdrawalIdempotencyService;
@@ -75,6 +77,7 @@ public class WithdrawalService {
                 this.payoutDetailValidator = payoutDetailValidator;
                 this.withdrawalAuditService = withdrawalAuditService;
                 this.auditLogService = auditLogService;
+                this.withdrawalEligibilityService = withdrawalEligibilityService;
         }
 
         @Transactional
@@ -109,6 +112,8 @@ public class WithdrawalService {
                 User user = userRepository.findById(userId)
                                 .orElseThrow(() -> new InvalidWithdrawalRequestException(
                                                 "User not found"));
+
+                withdrawalEligibilityService.validate(user);
 
                 PayoutMethod payoutMethod = payoutMethodRepository
                                 .findById(request.getPayoutMethodId())
