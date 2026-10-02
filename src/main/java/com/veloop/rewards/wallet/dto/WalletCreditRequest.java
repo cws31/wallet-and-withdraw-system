@@ -9,17 +9,17 @@ import java.math.BigDecimal;
 
 public record WalletCreditRequest(
 
-        @NotNull Currency currency,
+                @NotNull Currency currency,
 
-        @NotNull @DecimalMin(value = "0.0001", message = "Amount must be greater than zero") BigDecimal amount,
+                @NotNull @DecimalMin(value = "0.0001", message = "Amount must be greater than zero") BigDecimal amount,
 
-        @NotNull TransactionType transactionType,
+                @NotNull TransactionType transactionType,
 
-        String source,
+                String source,
 
-        String referenceId,
+                String referenceId,
 
-        String description,
+                String description,
 
-        String metadata) {
+                String metadata) {
 }
