@@ -1,5 +1,6 @@
 package com.veloop.rewards.withdrawal.controller;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.veloop.rewards.payout.entity.PayoutMethod;
 import com.veloop.rewards.payout.entity.PayoutOption;
@@ -9,6 +10,7 @@ import com.veloop.rewards.security.JwtService;
 import com.veloop.rewards.user.entity.User;
 import com.veloop.rewards.user.repository.UserRepository;
 import com.veloop.rewards.wallet.dto.WalletCreditRequest;
+import com.veloop.rewards.wallet.dto.WalletDebitRequest;
 import com.veloop.rewards.wallet.entity.Wallet;
 import com.veloop.rewards.wallet.enums.Currency;
 import com.veloop.rewards.wallet.enums.TransactionType;
@@ -25,6 +27,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.MvcResult;
 
 import java.math.BigDecimal;
 import java.util.UUID;
@@ -116,6 +119,11 @@ class WithdrawalApiIntegrationTest {
                             .saveAndFlush(method);
                 });
 
+        payoutMethod.setActive(true);
+
+        payoutMethod = payoutMethodRepository
+                .saveAndFlush(payoutMethod);
+
         payoutOption = payoutOptionRepository
                 .findByMethodIdAndActiveTrueOrderByPayoutAmountAsc(
                         payoutMethod.getId())
@@ -136,6 +144,11 @@ class WithdrawalApiIntegrationTest {
                     return payoutOptionRepository
                             .saveAndFlush(option);
                 });
+
+        payoutOption.setActive(true);
+
+        payoutOption = payoutOptionRepository
+                .saveAndFlush(payoutOption);
 
         WalletCreditRequest creditRequest = new WalletCreditRequest(
                 Currency.VES,
@@ -173,7 +186,7 @@ class WithdrawalApiIntegrationTest {
         mockMvc.perform(
                 post("/api/withdrawals")
                         .header(
-                                "Authorization",
+                                HttpHeaders.AUTHORIZATION,
                                 "Bearer " + jwtToken)
                         .header(
                                 "Idempotency-Key",
@@ -220,7 +233,7 @@ class WithdrawalApiIntegrationTest {
         mockMvc.perform(
                 post("/api/withdrawals")
                         .header(
-                                "Authorization",
+                                HttpHeaders.AUTHORIZATION,
                                 "Bearer " + jwtToken)
                         .header(
                                 "Idempotency-Key",
@@ -243,7 +256,8 @@ class WithdrawalApiIntegrationTest {
                 0,
                 currentWallet
                         .getVes()
-                        .compareTo(new BigDecimal("5000")));
+                        .compareTo(
+                                new BigDecimal("5000")));
     }
 
     @Test
@@ -289,7 +303,8 @@ class WithdrawalApiIntegrationTest {
                 0,
                 currentWallet
                         .getVes()
-                        .compareTo(new BigDecimal("5000")));
+                        .compareTo(
+                                new BigDecimal("5000")));
     }
 
     @Test
@@ -325,7 +340,8 @@ class WithdrawalApiIntegrationTest {
                 .andExpect(
                         jsonPath(
                                 "$.errors.payoutDetails",
-                                is("Payout details are required")));
+                                is(
+                                        "Payout details are required")));
     }
 
     @Test
@@ -376,7 +392,8 @@ class WithdrawalApiIntegrationTest {
                 0,
                 currentWallet
                         .getVes()
-                        .compareTo(new BigDecimal("5000")));
+                        .compareTo(
+                                new BigDecimal("5000")));
     }
 
     @Test
@@ -423,7 +440,7 @@ class WithdrawalApiIntegrationTest {
         mockMvc.perform(
                 post("/api/withdrawals")
                         .header(
-                                "Authorization",
+                                HttpHeaders.AUTHORIZATION,
                                 "Bearer " + jwtToken)
                         .contentType(
                                 MediaType.APPLICATION_JSON)
@@ -435,5 +452,384 @@ class WithdrawalApiIntegrationTest {
                                 "$.message",
                                 is(
                                         "Idempotency-Key header is required")));
+    }
+
+    @Test
+    void shouldRejectMalformedJwt()
+            throws Exception {
+
+        String requestBody = """
+                {
+                  "payoutMethodId": %d,
+                  "payoutOptionId": %d,
+                  "payoutDetails": "9876543210@ybl"
+                }
+                """.formatted(
+                payoutMethod.getId(),
+                payoutOption.getId());
+
+        mockMvc.perform(
+                post("/api/withdrawals")
+                        .header(
+                                HttpHeaders.AUTHORIZATION,
+                                "Bearer invalid.jwt.token")
+                        .header(
+                                "Idempotency-Key",
+                                "malformed-jwt-"
+                                        + UUID.randomUUID())
+                        .contentType(
+                                MediaType.APPLICATION_JSON)
+                        .content(requestBody))
+                .andExpect(
+                        status().isUnauthorized());
+    }
+
+    @Test
+    void shouldRejectWithdrawalWithInsufficientBalance()
+            throws Exception {
+
+        String requestBody = """
+                {
+                  "payoutMethodId": %d,
+                  "payoutOptionId": %d,
+                  "payoutDetails": "9876543210@ybl"
+                }
+                """.formatted(
+                payoutMethod.getId(),
+                payoutOption.getId());
+
+        walletService.debitWallet(
+                testUser.getId(),
+                new WalletDebitRequest(
+                        Currency.VES,
+                        new BigDecimal("5000"),
+                        TransactionType.WITHDRAWAL,
+                        "SECURITY_TEST",
+                        "SECURITY_TEST",
+                        "Prepare insufficient balance test",
+                        null));
+
+        Wallet beforeWithdrawal = walletService.getWallet(
+                testUser.getId());
+
+        assertEquals(
+                0,
+                beforeWithdrawal
+                        .getVes()
+                        .compareTo(BigDecimal.ZERO));
+
+        mockMvc.perform(
+                post("/api/withdrawals")
+                        .header(
+                                HttpHeaders.AUTHORIZATION,
+                                "Bearer " + jwtToken)
+                        .header(
+                                "Idempotency-Key",
+                                "insufficient-balance-"
+                                        + UUID.randomUUID())
+                        .contentType(
+                                MediaType.APPLICATION_JSON)
+                        .content(requestBody))
+                .andExpect(
+                        status().isBadRequest());
+
+        Wallet afterWithdrawal = walletService.getWallet(
+                testUser.getId());
+
+        assertEquals(
+                0,
+                afterWithdrawal
+                        .getVes()
+                        .compareTo(BigDecimal.ZERO));
+    }
+
+    @Test
+    void shouldRejectInactivePayoutMethod()
+            throws Exception {
+
+        payoutMethod.setActive(false);
+
+        payoutMethodRepository.saveAndFlush(
+                payoutMethod);
+
+        String requestBody = """
+                {
+                  "payoutMethodId": %d,
+                  "payoutOptionId": %d,
+                  "payoutDetails": "9876543210@ybl"
+                }
+                """.formatted(
+                payoutMethod.getId(),
+                payoutOption.getId());
+
+        mockMvc.perform(
+                post("/api/withdrawals")
+                        .header(
+                                HttpHeaders.AUTHORIZATION,
+                                "Bearer " + jwtToken)
+                        .header(
+                                "Idempotency-Key",
+                                "inactive-method-"
+                                        + UUID.randomUUID())
+                        .contentType(
+                                MediaType.APPLICATION_JSON)
+                        .content(requestBody))
+                .andExpect(
+                        status().isBadRequest())
+                .andExpect(
+                        jsonPath(
+                                "$.message",
+                                is(
+                                        "Selected payout method is inactive")));
+
+        Wallet currentWallet = walletService.getWallet(
+                testUser.getId());
+
+        assertEquals(
+                0,
+                currentWallet
+                        .getVes()
+                        .compareTo(
+                                new BigDecimal("5000")));
+    }
+
+    @Test
+    void shouldRejectInactivePayoutOption()
+            throws Exception {
+
+        payoutOption.setActive(false);
+
+        payoutOptionRepository.saveAndFlush(
+                payoutOption);
+
+        String requestBody = """
+                {
+                  "payoutMethodId": %d,
+                  "payoutOptionId": %d,
+                  "payoutDetails": "9876543210@ybl"
+                }
+                """.formatted(
+                payoutMethod.getId(),
+                payoutOption.getId());
+
+        mockMvc.perform(
+                post("/api/withdrawals")
+                        .header(
+                                HttpHeaders.AUTHORIZATION,
+                                "Bearer " + jwtToken)
+                        .header(
+                                "Idempotency-Key",
+                                "inactive-option-"
+                                        + UUID.randomUUID())
+                        .contentType(
+                                MediaType.APPLICATION_JSON)
+                        .content(requestBody))
+                .andExpect(
+                        status().isBadRequest())
+                .andExpect(
+                        jsonPath(
+                                "$.message",
+                                is(
+                                        "Selected payout option is inactive")));
+
+        Wallet currentWallet = walletService.getWallet(
+                testUser.getId());
+
+        assertEquals(
+                0,
+                currentWallet
+                        .getVes()
+                        .compareTo(
+                                new BigDecimal("5000")));
+    }
+
+    @Test
+    void shouldReturnSameWithdrawalForSameIdempotencyKey()
+            throws Exception {
+
+        String idempotencyKey = "duplicate-request-"
+                + UUID.randomUUID();
+
+        String requestBody = """
+                {
+                  "payoutMethodId": %d,
+                  "payoutOptionId": %d,
+                  "payoutDetails": "9876543210@ybl"
+                }
+                """.formatted(
+                payoutMethod.getId(),
+                payoutOption.getId());
+
+        MvcResult firstResult = mockMvc.perform(
+                post("/api/withdrawals")
+                        .header(
+                                HttpHeaders.AUTHORIZATION,
+                                "Bearer " + jwtToken)
+                        .header(
+                                "Idempotency-Key",
+                                idempotencyKey)
+                        .contentType(
+                                MediaType.APPLICATION_JSON)
+                        .content(requestBody))
+                .andExpect(
+                        status().isCreated())
+                .andReturn();
+
+        MvcResult secondResult = mockMvc.perform(
+                post("/api/withdrawals")
+                        .header(
+                                HttpHeaders.AUTHORIZATION,
+                                "Bearer " + jwtToken)
+                        .header(
+                                "Idempotency-Key",
+                                idempotencyKey)
+                        .contentType(
+                                MediaType.APPLICATION_JSON)
+                        .content(requestBody))
+                .andExpect(
+                        status().isCreated())
+                .andExpect(
+                        jsonPath(
+                                "$.success",
+                                is(true)))
+                .andReturn();
+
+        JsonNode firstJson = objectMapper.readTree(
+                firstResult
+                        .getResponse()
+                        .getContentAsString());
+
+        JsonNode secondJson = objectMapper.readTree(
+                secondResult
+                        .getResponse()
+                        .getContentAsString());
+
+        String firstWithdrawalId = firstJson
+                .at("/data/withdrawalId")
+                .asText();
+
+        String secondWithdrawalId = secondJson
+                .at("/data/withdrawalId")
+                .asText();
+
+        assertEquals(
+                firstWithdrawalId,
+                secondWithdrawalId);
+
+        Wallet currentWallet = walletService.getWallet(
+                testUser.getId());
+
+        assertEquals(
+                0,
+                currentWallet
+                        .getVes()
+                        .compareTo(
+                                new BigDecimal("2600")));
+    }
+
+    @Test
+    void shouldRejectSameIdempotencyKeyWithDifferentRequest()
+            throws Exception {
+
+        String idempotencyKey = "fingerprint-mismatch-"
+                + UUID.randomUUID();
+
+        String firstRequest = """
+                {
+                  "payoutMethodId": %d,
+                  "payoutOptionId": %d,
+                  "payoutDetails": "9876543210@ybl"
+                }
+                """.formatted(
+                payoutMethod.getId(),
+                payoutOption.getId());
+
+        mockMvc.perform(
+                post("/api/withdrawals")
+                        .header(
+                                HttpHeaders.AUTHORIZATION,
+                                "Bearer " + jwtToken)
+                        .header(
+                                "Idempotency-Key",
+                                idempotencyKey)
+                        .contentType(
+                                MediaType.APPLICATION_JSON)
+                        .content(firstRequest))
+                .andExpect(
+                        status().isCreated());
+
+        String secondRequest = """
+                {
+                  "payoutMethodId": %d,
+                  "payoutOptionId": %d,
+                  "payoutDetails": "different@ybl"
+                }
+                """.formatted(
+                payoutMethod.getId(),
+                payoutOption.getId());
+
+        mockMvc.perform(
+                post("/api/withdrawals")
+                        .header(
+                                HttpHeaders.AUTHORIZATION,
+                                "Bearer " + jwtToken)
+                        .header(
+                                "Idempotency-Key",
+                                idempotencyKey)
+                        .contentType(
+                                MediaType.APPLICATION_JSON)
+                        .content(secondRequest))
+                .andExpect(
+                        status().isConflict());
+    }
+
+    @Test
+    void shouldRejectWithdrawalWhenRateLimitExceeded()
+            throws Exception {
+
+        String requestBody = """
+                {
+                  "payoutMethodId": %d,
+                  "payoutOptionId": %d,
+                  "payoutDetails": "invalid-upi"
+                }
+                """.formatted(
+                payoutMethod.getId(),
+                payoutOption.getId());
+
+        int rateLimit = 5;
+
+        for (int requestNumber = 1; requestNumber <= rateLimit; requestNumber++) {
+
+            mockMvc.perform(
+                    post("/api/withdrawals")
+                            .header(
+                                    HttpHeaders.AUTHORIZATION,
+                                    "Bearer " + jwtToken)
+                            .header(
+                                    "Idempotency-Key",
+                                    "rate-limit-"
+                                            + UUID.randomUUID())
+                            .contentType(
+                                    MediaType.APPLICATION_JSON)
+                            .content(requestBody))
+                    .andExpect(
+                            status().isBadRequest());
+        }
+
+        mockMvc.perform(
+                post("/api/withdrawals")
+                        .header(
+                                HttpHeaders.AUTHORIZATION,
+                                "Bearer " + jwtToken)
+                        .header(
+                                "Idempotency-Key",
+                                "rate-limit-exceeded-"
+                                        + UUID.randomUUID())
+                        .contentType(
+                                MediaType.APPLICATION_JSON)
+                        .content(requestBody))
+                .andExpect(
+                        status().isTooManyRequests());
     }
 }
