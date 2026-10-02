@@ -8,9 +8,12 @@ import com.veloop.rewards.user.entity.User;
 import com.veloop.rewards.user.repository.UserRepository;
 import com.veloop.rewards.wallet.dto.WalletCreditRequest;
 import com.veloop.rewards.wallet.entity.Wallet;
+import com.veloop.rewards.wallet.entity.WalletTransaction;
 import com.veloop.rewards.wallet.enums.Currency;
+import com.veloop.rewards.wallet.enums.TransactionStatus;
 import com.veloop.rewards.wallet.enums.TransactionType;
 import com.veloop.rewards.wallet.repository.WalletRepository;
+import com.veloop.rewards.wallet.repository.WalletTransactionRepository;
 import com.veloop.rewards.wallet.service.WalletService;
 import com.veloop.rewards.withdrawal.dto.WithdrawalCreateRequest;
 import com.veloop.rewards.withdrawal.dto.WithdrawalResponse;
@@ -28,6 +31,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -46,6 +50,9 @@ class WithdrawalServiceIntegrationTest {
 
         @Autowired
         private WalletRepository walletRepository;
+
+        @Autowired
+        private WalletTransactionRepository walletTransactionRepository;
 
         @Autowired
         private PayoutMethodRepository payoutMethodRepository;
@@ -198,38 +205,128 @@ class WithdrawalServiceIntegrationTest {
         }
 
         @Test
-        void shouldCreateWithdrawalSuccessfully() {
+        void shouldRejectWithdrawalAndReverseBalance() {
 
                 creditWallet(
                                 testUserId,
                                 new BigDecimal("5000"),
-                                "TEST-REF-001");
+                                "TEST-REF-006");
 
                 WithdrawalCreateRequest request = createRequest("test@upi");
 
-                WithdrawalResponse response = withdrawalService.createWithdrawal(
+                WithdrawalResponse created = withdrawalService.createWithdrawal(
                                 testUserId,
-                                "IDEMPOTENCY-001",
+                                "IDEMPOTENCY-006",
                                 request);
 
-                assertNotNull(response);
-
-                assertNotNull(
-                                response.getWithdrawalId());
-
-                assertEquals(
-                                WithdrawalStatus.PENDING.name(),
-                                response.getStatus());
+                Wallet walletAfterWithdrawal = walletRepository
+                                .findByUserId(testUserId)
+                                .orElseThrow();
 
                 assertEquals(
                                 0,
-                                new BigDecimal("10")
-                                                .compareTo(response.getCurrencyAmount()));
+                                new BigDecimal("2600")
+                                                .compareTo(walletAfterWithdrawal.getVes()));
 
                 assertEquals(
                                 0,
                                 new BigDecimal("2400")
-                                                .compareTo(response.getPayoutAmount()));
+                                                .compareTo(
+                                                                walletAfterWithdrawal
+                                                                                .getWithdrawnVes()));
+
+                WithdrawalResponse rejected = withdrawalService.rejectWithdrawal(
+                                created.getWithdrawalId(),
+                                "  Invalid payout details  ",
+                                "  Test review note  ",
+                                adminUserId);
+
+                assertEquals(
+                                WithdrawalStatus.REJECTED.name(),
+                                rejected.getStatus());
+
+                Wallet walletAfterRejection = walletRepository
+                                .findByUserId(testUserId)
+                                .orElseThrow();
+
+                assertEquals(
+                                0,
+                                new BigDecimal("5000")
+                                                .compareTo(walletAfterRejection.getVes()));
+
+                assertEquals(
+                                0,
+                                BigDecimal.ZERO
+                                                .compareTo(
+                                                                walletAfterRejection
+                                                                                .getWithdrawnVes()));
+
+                List<WalletTransaction> transactions = walletTransactionRepository
+                                .findByUserIdOrderByCreatedAtDesc(
+                                                testUserId,
+                                                PageRequest.of(0, 20))
+                                .getContent();
+
+                WalletTransaction withdrawalTransaction = transactions.stream()
+                                .filter(transaction -> transaction.getTransactionType() == TransactionType.WITHDRAWAL)
+                                .findFirst()
+                                .orElseThrow();
+
+                assertEquals(
+                                0,
+                                new BigDecimal("5000")
+                                                .compareTo(
+                                                                withdrawalTransaction
+                                                                                .getBalanceBefore()));
+
+                assertEquals(
+                                0,
+                                new BigDecimal("2600")
+                                                .compareTo(
+                                                                withdrawalTransaction
+                                                                                .getBalanceAfter()));
+
+                assertEquals(
+                                created.getWithdrawalId(),
+                                withdrawalTransaction.getReferenceId());
+
+                WalletTransaction correctionTransaction = transactions.stream()
+                                .filter(transaction -> transaction.getTransactionType() == TransactionType.CORRECTION)
+                                .findFirst()
+                                .orElseThrow();
+
+                assertEquals(
+                                0,
+                                new BigDecimal("2400")
+                                                .compareTo(
+                                                                correctionTransaction
+                                                                                .getAmount()));
+
+                assertEquals(
+                                0,
+                                new BigDecimal("2600")
+                                                .compareTo(
+                                                                correctionTransaction
+                                                                                .getBalanceBefore()));
+
+                assertEquals(
+                                0,
+                                new BigDecimal("5000")
+                                                .compareTo(
+                                                                correctionTransaction
+                                                                                .getBalanceAfter()));
+
+                assertEquals(
+                                "WITHDRAWAL_REJECTED",
+                                correctionTransaction.getSource());
+
+                assertEquals(
+                                created.getWithdrawalId() + "-REVERSAL",
+                                correctionTransaction.getReferenceId());
+
+                assertEquals(
+                                TransactionStatus.COMPLETED,
+                                correctionTransaction.getStatus());
         }
 
         @Test
@@ -335,54 +432,6 @@ class WithdrawalServiceIntegrationTest {
         }
 
         @Test
-        void shouldRejectWithdrawalAndReverseBalance() {
-
-                creditWallet(
-                                testUserId,
-                                new BigDecimal("5000"),
-                                "TEST-REF-006");
-
-                WithdrawalCreateRequest request = createRequest("test@upi");
-
-                WithdrawalResponse created = withdrawalService.createWithdrawal(
-                                testUserId,
-                                "IDEMPOTENCY-006",
-                                request);
-
-                Wallet walletAfterWithdrawal = walletRepository
-                                .findByUserId(testUserId)
-                                .orElseThrow();
-
-                assertEquals(
-                                0,
-                                new BigDecimal("2600.0000")
-                                                .compareTo(
-                                                                walletAfterWithdrawal
-                                                                                .getVes()));
-
-                WithdrawalResponse rejected = withdrawalService.rejectWithdrawal(
-                                created.getWithdrawalId(),
-                                "  Invalid payout details  ",
-                                "  Test review note  ",
-                                adminUserId);
-
-                assertEquals(
-                                WithdrawalStatus.REJECTED.name(),
-                                rejected.getStatus());
-
-                Wallet walletAfterRejection = walletRepository
-                                .findByUserId(testUserId)
-                                .orElseThrow();
-
-                assertEquals(
-                                0,
-                                new BigDecimal("5000.0000")
-                                                .compareTo(
-                                                                walletAfterRejection
-                                                                                .getVes()));
-        }
-
-        @Test
         void shouldCancelPendingWithdrawalAndReverseBalance() {
 
                 creditWallet(
@@ -411,9 +460,81 @@ class WithdrawalServiceIntegrationTest {
 
                 assertEquals(
                                 0,
-                                new BigDecimal("5000.0000")
+                                new BigDecimal("5000")
+                                                .compareTo(wallet.getVes()));
+
+                assertEquals(
+                                0,
+                                BigDecimal.ZERO
+                                                .compareTo(wallet.getWithdrawnVes()));
+
+                List<WalletTransaction> transactions = walletTransactionRepository
+                                .findByUserIdOrderByCreatedAtDesc(
+                                                testUserId,
+                                                PageRequest.of(0, 20))
+                                .getContent();
+
+                WalletTransaction withdrawalTransaction = transactions.stream()
+                                .filter(transaction -> transaction.getTransactionType() == TransactionType.WITHDRAWAL)
+                                .findFirst()
+                                .orElseThrow();
+
+                assertEquals(
+                                0,
+                                new BigDecimal("5000")
                                                 .compareTo(
-                                                                wallet.getVes()));
+                                                                withdrawalTransaction
+                                                                                .getBalanceBefore()));
+
+                assertEquals(
+                                0,
+                                new BigDecimal("2600")
+                                                .compareTo(
+                                                                withdrawalTransaction
+                                                                                .getBalanceAfter()));
+
+                assertEquals(
+                                created.getWithdrawalId(),
+                                withdrawalTransaction.getReferenceId());
+
+                WalletTransaction correctionTransaction = transactions.stream()
+                                .filter(transaction -> transaction.getTransactionType() == TransactionType.CORRECTION)
+                                .findFirst()
+                                .orElseThrow();
+
+                assertEquals(
+                                0,
+                                new BigDecimal("2400")
+                                                .compareTo(
+                                                                correctionTransaction
+                                                                                .getAmount()));
+
+                assertEquals(
+                                0,
+                                new BigDecimal("2600")
+                                                .compareTo(
+                                                                correctionTransaction
+                                                                                .getBalanceBefore()));
+
+                assertEquals(
+                                0,
+                                new BigDecimal("5000")
+                                                .compareTo(
+                                                                correctionTransaction
+                                                                                .getBalanceAfter()));
+
+                assertEquals(
+                                "WITHDRAWAL_CANCELLED",
+                                correctionTransaction.getSource());
+
+                assertEquals(
+                                created.getWithdrawalId()
+                                                + "-CANCELLATION-REVERSAL",
+                                correctionTransaction.getReferenceId());
+
+                assertEquals(
+                                TransactionStatus.COMPLETED,
+                                correctionTransaction.getStatus());
         }
 
         @Test
@@ -665,6 +786,122 @@ class WithdrawalServiceIntegrationTest {
                                 () -> withdrawalService.markProcessing(
                                                 created.getWithdrawalId(),
                                                 adminUserId));
+        }
+
+        @Test
+        void shouldCreateLedgerEntryForWalletCredit() {
+
+                String referenceId = "TEST-CREDIT-LEDGER-001";
+
+                creditWallet(
+                                testUserId,
+                                new BigDecimal("1000"),
+                                referenceId);
+
+                Wallet wallet = walletRepository
+                                .findByUserId(testUserId)
+                                .orElseThrow();
+
+                assertEquals(
+                                0,
+                                new BigDecimal("1000")
+                                                .compareTo(wallet.getVes()));
+
+                WalletTransaction transaction = walletTransactionRepository
+                                .findByReferenceId(referenceId)
+                                .orElseThrow();
+
+                assertNotNull(transaction.getTransactionId());
+
+                assertEquals(
+                                testUserId,
+                                transaction.getUserId());
+
+                assertEquals(
+                                Currency.VES,
+                                transaction.getCurrency());
+
+                assertEquals(
+                                TransactionType.REWARD,
+                                transaction.getTransactionType());
+
+                assertEquals(
+                                0,
+                                new BigDecimal("1000")
+                                                .compareTo(transaction.getAmount()));
+
+                assertEquals(
+                                0,
+                                BigDecimal.ZERO
+                                                .compareTo(transaction.getBalanceBefore()));
+
+                assertEquals(
+                                0,
+                                new BigDecimal("1000")
+                                                .compareTo(transaction.getBalanceAfter()));
+
+                assertEquals(
+                                "TEST",
+                                transaction.getSource());
+
+                assertEquals(
+                                referenceId,
+                                transaction.getReferenceId());
+
+                assertEquals(
+                                TransactionStatus.COMPLETED,
+                                transaction.getStatus());
+        }
+
+        @Test
+        void shouldOnlyUpdateWithdrawnVesForWithdrawalTransactions() {
+
+                creditWallet(
+                                testUserId,
+                                new BigDecimal("5000"),
+                                "TEST-REF-WITHDRAWN-VES");
+
+                Wallet afterCredit = walletRepository
+                                .findByUserId(testUserId)
+                                .orElseThrow();
+
+                assertEquals(
+                                0,
+                                BigDecimal.ZERO
+                                                .compareTo(afterCredit.getWithdrawnVes()));
+
+                WithdrawalResponse created = withdrawalService.createWithdrawal(
+                                testUserId,
+                                "IDEMPOTENCY-WITHDRAWN-VES",
+                                createRequest("test@upi"));
+
+                Wallet afterWithdrawal = walletRepository
+                                .findByUserId(testUserId)
+                                .orElseThrow();
+
+                assertEquals(
+                                0,
+                                new BigDecimal("2400")
+                                                .compareTo(
+                                                                afterWithdrawal
+                                                                                .getWithdrawnVes()));
+
+                withdrawalService.rejectWithdrawal(
+                                created.getWithdrawalId(),
+                                "Invalid payout details",
+                                "Test reversal",
+                                adminUserId);
+
+                Wallet afterReversal = walletRepository
+                                .findByUserId(testUserId)
+                                .orElseThrow();
+
+                assertEquals(
+                                0,
+                                BigDecimal.ZERO
+                                                .compareTo(
+                                                                afterReversal
+                                                                                .getWithdrawnVes()));
         }
 
         @Test
