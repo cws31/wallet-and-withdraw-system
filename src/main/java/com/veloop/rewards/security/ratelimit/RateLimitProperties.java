@@ -94,4 +94,14 @@ public class RateLimitProperties {
     public void setMaxEntries(int maxEntries) {
         this.maxEntries = maxEntries;
     }
+
+    public int getWithdrawalMutationWindowSeconds() {
+        return withdrawalMutationWindowSeconds;
+    }
+
+    public void setWithdrawalMutationWindowSeconds(
+            int withdrawalMutationWindowSeconds) {
+
+        this.withdrawalMutationWindowSeconds = withdrawalMutationWindowSeconds;
+    }
 }

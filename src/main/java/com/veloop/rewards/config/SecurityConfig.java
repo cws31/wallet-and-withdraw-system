@@ -3,6 +3,7 @@ package com.veloop.rewards.config;
 import com.veloop.rewards.security.AccessDeniedExceptionHandler;
 import com.veloop.rewards.security.JwtAuthenticationFilter;
 import com.veloop.rewards.security.SecurityExceptionHandler;
+import com.veloop.rewards.security.ratelimit.RateLimitFilter;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -21,14 +22,18 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 public class SecurityConfig {
 
         private final JwtAuthenticationFilter jwtAuthenticationFilter;
+        private final RateLimitFilter rateLimitFilter;
         private final SecurityExceptionHandler securityExceptionHandler;
         private final AccessDeniedExceptionHandler accessDeniedExceptionHandler;
 
         public SecurityConfig(
                         JwtAuthenticationFilter jwtAuthenticationFilter,
+                        RateLimitFilter rateLimitFilter,
                         SecurityExceptionHandler securityExceptionHandler,
                         AccessDeniedExceptionHandler accessDeniedExceptionHandler) {
+
                 this.jwtAuthenticationFilter = jwtAuthenticationFilter;
+                this.rateLimitFilter = rateLimitFilter;
                 this.securityExceptionHandler = securityExceptionHandler;
                 this.accessDeniedExceptionHandler = accessDeniedExceptionHandler;
         }
@@ -45,16 +50,19 @@ public class SecurityConfig {
                 http
                                 .csrf(csrf -> csrf.disable())
 
-                                .sessionManagement(session -> session.sessionCreationPolicy(
-                                                SessionCreationPolicy.STATELESS))
+                                .sessionManagement(session -> session
+                                                .sessionCreationPolicy(
+                                                                SessionCreationPolicy.STATELESS))
 
                                 .formLogin(form -> form.disable())
 
                                 .httpBasic(httpBasic -> httpBasic.disable())
 
                                 .exceptionHandling(exception -> exception
-                                                .authenticationEntryPoint(securityExceptionHandler)
-                                                .accessDeniedHandler(accessDeniedExceptionHandler))
+                                                .authenticationEntryPoint(
+                                                                securityExceptionHandler)
+                                                .accessDeniedHandler(
+                                                                accessDeniedExceptionHandler))
 
                                 .authorizeHttpRequests(auth -> auth
                                                 .requestMatchers(
@@ -65,11 +73,16 @@ public class SecurityConfig {
                                                                 "/swagger-ui/**",
                                                                 "/v3/api-docs/**")
                                                 .permitAll()
-                                                .anyRequest().authenticated())
+                                                .anyRequest()
+                                                .authenticated())
 
                                 .addFilterBefore(
                                                 jwtAuthenticationFilter,
-                                                UsernamePasswordAuthenticationFilter.class);
+                                                UsernamePasswordAuthenticationFilter.class)
+
+                                .addFilterAfter(
+                                                rateLimitFilter,
+                                                JwtAuthenticationFilter.class);
 
                 return http.build();
         }
