@@ -6,18 +6,13 @@ import com.veloop.rewards.withdrawal.entity.Withdrawal;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDateTime;
-import java.util.Optional;
 
 @Component
 public class UnusualWalletActivityRule implements FraudRiskRule {
 
     private static final String RULE_CODE = "UNUSUAL_WALLET_ACTIVITY";
 
-    private static final int RISK_SCORE = 20;
-
     private static final int WINDOW_MINUTES = 15;
-
-    private static final int TRANSACTION_THRESHOLD = 10;
 
     private final WalletTransactionRepository walletTransactionRepository;
 
@@ -33,31 +28,56 @@ public class UnusualWalletActivityRule implements FraudRiskRule {
     }
 
     @Override
-    public int getRiskScore() {
-        return RISK_SCORE;
-    }
-
-    @Override
-    public Optional<String> evaluate(
+    public RiskRuleResult evaluate(
             User user,
             Withdrawal withdrawal) {
 
         LocalDateTime windowStart = LocalDateTime.now()
                 .minusMinutes(WINDOW_MINUTES);
 
-        long recentTransactions = walletTransactionRepository
+        long transactionCount = walletTransactionRepository
                 .countByUserIdAndCreatedAtAfter(
                         user.getId(),
                         windowStart);
 
-        if (recentTransactions >= TRANSACTION_THRESHOLD) {
-
-            return Optional.of(
-                    "User has unusually high wallet "
-                            + "transaction activity within "
-                            + "a short time window");
+        if (transactionCount < 5) {
+            return RiskRuleResult.notTriggered(
+                    RULE_CODE);
         }
 
-        return Optional.empty();
+        int riskScore = calculateRiskScore(transactionCount);
+
+        String explanation = "Detected "
+                + transactionCount
+                + " wallet transactions within "
+                + WINDOW_MINUTES
+                + " minutes";
+
+        return RiskRuleResult.triggered(
+                RULE_CODE,
+                riskScore,
+                explanation);
+    }
+
+    private int calculateRiskScore(
+            long transactionCount) {
+
+        if (transactionCount <= 6) {
+            return 10;
+        }
+
+        if (transactionCount <= 8) {
+            return 15;
+        }
+
+        if (transactionCount <= 10) {
+            return 20;
+        }
+
+        if (transactionCount <= 15) {
+            return 25;
+        }
+
+        return 30;
     }
 }

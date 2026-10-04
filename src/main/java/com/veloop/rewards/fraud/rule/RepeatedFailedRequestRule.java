@@ -6,20 +6,15 @@ import com.veloop.rewards.withdrawal.entity.Withdrawal;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDateTime;
-import java.util.Optional;
 
 @Component
 public class RepeatedFailedRequestRule implements FraudRiskRule {
 
     private static final String RULE_CODE = "REPEATED_FAILED_REQUESTS";
 
-    private static final int RISK_SCORE = 15;
+    private static final String FAILED_REQUEST_ACTION = "WITHDRAWAL_REQUEST_FAILED";
 
     private static final int WINDOW_MINUTES = 10;
-
-    private static final int FAILURE_THRESHOLD = 5;
-
-    private static final String FAILED_WITHDRAWAL_ACTION = "WITHDRAWAL_REQUEST_FAILED";
 
     private final AuditLogRepository auditLogRepository;
 
@@ -35,12 +30,7 @@ public class RepeatedFailedRequestRule implements FraudRiskRule {
     }
 
     @Override
-    public int getRiskScore() {
-        return RISK_SCORE;
-    }
-
-    @Override
-    public Optional<String> evaluate(
+    public RiskRuleResult evaluate(
             User user,
             Withdrawal withdrawal) {
 
@@ -50,16 +40,47 @@ public class RepeatedFailedRequestRule implements FraudRiskRule {
         long failedRequests = auditLogRepository
                 .countByTargetUserIdAndActionAndCreatedAtAfter(
                         user.getId(),
-                        FAILED_WITHDRAWAL_ACTION,
+                        FAILED_REQUEST_ACTION,
                         windowStart);
 
-        if (failedRequests >= FAILURE_THRESHOLD) {
-
-            return Optional.of(
-                    "User has repeated failed withdrawal "
-                            + "requests within a short time window");
+        if (failedRequests < 3) {
+            return RiskRuleResult.notTriggered(
+                    RULE_CODE);
         }
 
-        return Optional.empty();
+        int riskScore = calculateRiskScore(failedRequests);
+
+        String explanation = "Detected "
+                + failedRequests
+                + " failed withdrawal requests within "
+                + WINDOW_MINUTES
+                + " minutes";
+
+        return RiskRuleResult.triggered(
+                RULE_CODE,
+                riskScore,
+                explanation);
+    }
+
+    private int calculateRiskScore(
+            long failedRequests) {
+
+        if (failedRequests == 3) {
+            return 10;
+        }
+
+        if (failedRequests == 4) {
+            return 15;
+        }
+
+        if (failedRequests == 5) {
+            return 20;
+        }
+
+        if (failedRequests <= 7) {
+            return 25;
+        }
+
+        return 30;
     }
 }

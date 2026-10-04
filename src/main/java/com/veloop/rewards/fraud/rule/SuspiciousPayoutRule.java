@@ -5,19 +5,15 @@ import com.veloop.rewards.withdrawal.entity.Withdrawal;
 import com.veloop.rewards.withdrawal.repository.WithdrawalRepository;
 import org.springframework.stereotype.Component;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
-import java.util.Optional;
 
 @Component
 public class SuspiciousPayoutRule implements FraudRiskRule {
 
     private static final String RULE_CODE = "SUSPICIOUS_PAYOUT_REQUESTS";
 
-    private static final int RISK_SCORE = 30;
-
     private static final int WINDOW_MINUTES = 30;
-
-    private static final int REQUEST_THRESHOLD = 4;
 
     private final WithdrawalRepository withdrawalRepository;
 
@@ -33,20 +29,27 @@ public class SuspiciousPayoutRule implements FraudRiskRule {
     }
 
     @Override
-    public int getRiskScore() {
-        return RISK_SCORE;
-    }
-
-    @Override
-    public Optional<String> evaluate(
+    public RiskRuleResult evaluate(
             User user,
             Withdrawal withdrawal) {
 
-        if (withdrawal.getPayoutOption() == null
-                || withdrawal.getPayoutOption().getId() == null
-                || withdrawal.getCurrencyAmount() == null) {
+        if (withdrawal.getPayoutOption() == null) {
+            return RiskRuleResult.notTriggered(
+                    RULE_CODE);
+        }
 
-            return Optional.empty();
+        if (withdrawal.getCurrencyAmount() == null) {
+            return RiskRuleResult.notTriggered(
+                    RULE_CODE);
+        }
+
+        Long payoutOptionId = withdrawal.getPayoutOption().getId();
+
+        BigDecimal currencyAmount = withdrawal.getCurrencyAmount();
+
+        if (payoutOptionId == null) {
+            return RiskRuleResult.notTriggered(
+                    RULE_CODE);
         }
 
         LocalDateTime windowStart = LocalDateTime.now()
@@ -55,18 +58,50 @@ public class SuspiciousPayoutRule implements FraudRiskRule {
         long similarRequests = withdrawalRepository
                 .countByUserIdAndPayoutOptionIdAndCurrencyAmountAndCreatedAtAfter(
                         user.getId(),
-                        withdrawal.getPayoutOption().getId(),
-                        withdrawal.getCurrencyAmount(),
+                        payoutOptionId,
+                        currencyAmount,
                         windowStart);
 
-        if (similarRequests >= REQUEST_THRESHOLD) {
+        long requestCount = similarRequests + 1;
 
-            return Optional.of(
-                    "User has repeatedly requested the same "
-                            + "payout option and amount within "
-                            + "a short time window");
+        if (requestCount < 2) {
+            return RiskRuleResult.notTriggered(
+                    RULE_CODE);
         }
 
-        return Optional.empty();
+        int riskScore = calculateRiskScore(requestCount);
+
+        String explanation = "Detected "
+                + requestCount
+                + " similar payout requests within "
+                + WINDOW_MINUTES
+                + " minutes";
+
+        return RiskRuleResult.triggered(
+                RULE_CODE,
+                riskScore,
+                explanation);
+    }
+
+    private int calculateRiskScore(
+            long requestCount) {
+
+        if (requestCount == 2) {
+            return 10;
+        }
+
+        if (requestCount == 3) {
+            return 20;
+        }
+
+        if (requestCount == 4) {
+            return 30;
+        }
+
+        if (requestCount <= 6) {
+            return 35;
+        }
+
+        return 40;
     }
 }

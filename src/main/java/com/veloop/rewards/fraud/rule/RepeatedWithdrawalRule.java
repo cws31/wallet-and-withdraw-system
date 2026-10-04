@@ -6,18 +6,13 @@ import com.veloop.rewards.withdrawal.entity.Withdrawal;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDateTime;
-import java.util.Optional;
 
 @Component
 public class RepeatedWithdrawalRule implements FraudRiskRule {
 
     private static final String RULE_CODE = "REPEATED_WITHDRAWAL";
 
-    private static final int RISK_SCORE = 20;
-
     private static final int WINDOW_HOURS = 24;
-
-    private static final int WITHDRAWAL_THRESHOLD = 5;
 
     private final FraudRiskEventRepository fraudRiskEventRepository;
 
@@ -33,12 +28,7 @@ public class RepeatedWithdrawalRule implements FraudRiskRule {
     }
 
     @Override
-    public int getRiskScore() {
-        return RISK_SCORE;
-    }
-
-    @Override
-    public Optional<String> evaluate(
+    public RiskRuleResult evaluate(
             User user,
             Withdrawal withdrawal) {
 
@@ -49,14 +39,46 @@ public class RepeatedWithdrawalRule implements FraudRiskRule {
                 .countByUserAndCreatedAtAfter(
                         user,
                         windowStart);
+        long withdrawalCount = recentRiskEvents + 1;
 
-        if (recentRiskEvents >= WITHDRAWAL_THRESHOLD) {
-
-            return Optional.of(
-                    "User has repeated withdrawal activity "
-                            + "within the last 24 hours");
+        if (withdrawalCount < 3) {
+            return RiskRuleResult.notTriggered(
+                    RULE_CODE);
         }
 
-        return Optional.empty();
+        int riskScore = calculateRiskScore(withdrawalCount);
+
+        String explanation = "Detected "
+                + withdrawalCount
+                + " withdrawal requests within "
+                + WINDOW_HOURS
+                + " hours";
+
+        return RiskRuleResult.triggered(
+                RULE_CODE,
+                riskScore,
+                explanation);
+    }
+
+    private int calculateRiskScore(
+            long withdrawalCount) {
+
+        if (withdrawalCount == 3) {
+            return 10;
+        }
+
+        if (withdrawalCount == 4) {
+            return 15;
+        }
+
+        if (withdrawalCount == 5) {
+            return 20;
+        }
+
+        if (withdrawalCount <= 7) {
+            return 25;
+        }
+
+        return 30;
     }
 }
