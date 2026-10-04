@@ -16,4 +16,9 @@ public interface AuditLogRepository extends JpaRepository<AuditLog, Long> {
             String referenceId);
 
     List<AuditLog> findByActionOrderByCreatedAtDesc(String action);
+
+    long countByTargetUserIdAndActionAndCreatedAtAfter(
+            Long targetUserId,
+            String action,
+            java.time.LocalDateTime createdAt);
 }
