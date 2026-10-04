@@ -12,10 +12,10 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
-import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.*;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class SuspiciousPayoutRuleTest {
@@ -23,13 +23,14 @@ class SuspiciousPayoutRuleTest {
     @Mock
     private WithdrawalRepository withdrawalRepository;
 
+    @Mock
+    private PayoutOption payoutOption;
+
     private SuspiciousPayoutRule rule;
 
     private User user;
 
     private Withdrawal withdrawal;
-
-    private PayoutOption payoutOption;
 
     @BeforeEach
     void setUp() {
@@ -40,85 +41,119 @@ class SuspiciousPayoutRuleTest {
         user = new User();
         user.setId(1L);
 
-        payoutOption = new PayoutOption();
-        payoutOption.setId(10L);
-
         withdrawal = new Withdrawal();
 
         withdrawal.setPayoutOption(payoutOption);
         withdrawal.setCurrencyAmount(
-                new BigDecimal("100.00"));
+                new BigDecimal("100"));
+
+        when(payoutOption.getId())
+                .thenReturn(10L);
     }
 
     @Test
-    void shouldTriggerWhenFourSimilarRequestsExist() {
+    void shouldNotTriggerForFirstSimilarRequest() {
 
         when(
                 withdrawalRepository
                         .countByUserIdAndPayoutOptionIdAndCurrencyAmountAndCreatedAtAfter(
                                 eq(1L),
                                 eq(10L),
-                                eq(new BigDecimal("100.00")),
+                                eq(new BigDecimal("100")),
                                 any(LocalDateTime.class)))
-                .thenReturn(4L);
+                .thenReturn(0L);
 
-        Optional<String> result = rule.evaluate(user, withdrawal);
+        RiskRuleResult result = rule.evaluate(user, withdrawal);
 
-        assertTrue(result.isPresent());
-
-        assertEquals(
-                "User has repeatedly requested the same "
-                        + "payout option and amount within "
-                        + "a short time window",
-                result.get());
+        assertFalse(result.isTriggered());
 
         assertEquals(
                 "SUSPICIOUS_PAYOUT_REQUESTS",
-                rule.getRuleCode());
+                result.getRuleCode());
 
         assertEquals(
-                30,
-                rule.getRiskScore());
+                0,
+                result.getRiskScore());
+
+        assertNull(result.getExplanation());
     }
 
     @Test
-    void shouldNotTriggerWhenFewerThanFourSimilarRequestsExist() {
+    void shouldReturnTenPointsForSecondSimilarRequest() {
 
         when(
                 withdrawalRepository
                         .countByUserIdAndPayoutOptionIdAndCurrencyAmountAndCreatedAtAfter(
                                 eq(1L),
                                 eq(10L),
-                                eq(new BigDecimal("100.00")),
+                                eq(new BigDecimal("100")),
+                                any(LocalDateTime.class)))
+                .thenReturn(1L);
+
+        RiskRuleResult result = rule.evaluate(user, withdrawal);
+
+        assertTrue(result.isTriggered());
+
+        assertEquals(
+                "SUSPICIOUS_PAYOUT_REQUESTS",
+                result.getRuleCode());
+
+        assertEquals(
+                10,
+                result.getRiskScore());
+
+        assertTrue(
+                result.getExplanation()
+                        .contains("2 similar payout requests"));
+    }
+
+    @Test
+    void shouldReturnThirtyPointsForFourthSimilarRequest() {
+
+        when(
+                withdrawalRepository
+                        .countByUserIdAndPayoutOptionIdAndCurrencyAmountAndCreatedAtAfter(
+                                eq(1L),
+                                eq(10L),
+                                eq(new BigDecimal("100")),
                                 any(LocalDateTime.class)))
                 .thenReturn(3L);
 
-        Optional<String> result = rule.evaluate(user, withdrawal);
+        RiskRuleResult result = rule.evaluate(user, withdrawal);
 
-        assertTrue(result.isEmpty());
+        assertTrue(result.isTriggered());
+
+        assertEquals(
+                30,
+                result.getRiskScore());
+
+        assertTrue(
+                result.getExplanation()
+                        .contains("4 similar payout requests"));
     }
 
     @Test
-    void shouldNotTriggerWhenPayoutOptionIsMissing() {
+    void shouldReturnMaximumScoreForSevenOrMoreSimilarRequests() {
 
-        withdrawal.setPayoutOption(null);
+        when(
+                withdrawalRepository
+                        .countByUserIdAndPayoutOptionIdAndCurrencyAmountAndCreatedAtAfter(
+                                eq(1L),
+                                eq(10L),
+                                eq(new BigDecimal("100")),
+                                any(LocalDateTime.class)))
+                .thenReturn(6L);
 
-        Optional<String> result = rule.evaluate(user, withdrawal);
+        RiskRuleResult result = rule.evaluate(user, withdrawal);
 
-        assertTrue(result.isEmpty());
+        assertTrue(result.isTriggered());
 
-        verifyNoInteractions(withdrawalRepository);
-    }
+        assertEquals(
+                40,
+                result.getRiskScore());
 
-    @Test
-    void shouldNotTriggerWhenCurrencyAmountIsMissing() {
-
-        withdrawal.setCurrencyAmount(null);
-
-        Optional<String> result = rule.evaluate(user, withdrawal);
-
-        assertTrue(result.isEmpty());
-
-        verifyNoInteractions(withdrawalRepository);
+        assertTrue(
+                result.getExplanation()
+                        .contains("7 similar payout requests"));
     }
 }

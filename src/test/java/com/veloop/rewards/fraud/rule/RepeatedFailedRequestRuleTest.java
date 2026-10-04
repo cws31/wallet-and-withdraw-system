@@ -10,10 +10,10 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.LocalDateTime;
-import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class RepeatedFailedRequestRuleTest {
@@ -21,98 +21,121 @@ class RepeatedFailedRequestRuleTest {
     @Mock
     private AuditLogRepository auditLogRepository;
 
-    private RepeatedFailedRequestRule rule;
-
+    @Mock
     private User user;
 
+    @Mock
     private Withdrawal withdrawal;
+
+    private RepeatedFailedRequestRule rule;
 
     @BeforeEach
     void setUp() {
-
         rule = new RepeatedFailedRequestRule(
                 auditLogRepository);
 
-        user = new User();
-        user.setId(1L);
-
-        withdrawal = new Withdrawal();
+        when(user.getId()).thenReturn(1L);
     }
 
     @Test
-    void shouldTriggerWhenFiveFailedRequestsExist() {
+    void shouldNotTriggerWhenFailedRequestsAreBelowThreshold() {
 
         when(
                 auditLogRepository
                         .countByTargetUserIdAndActionAndCreatedAtAfter(
-                                eq(1L),
-                                eq("WITHDRAWAL_REQUEST_FAILED"),
+                                1L,
+                                "WITHDRAWAL_REQUEST_FAILED",
                                 any(LocalDateTime.class)))
-                .thenReturn(5L);
+                .thenReturn(2L);
 
-        Optional<String> result = rule.evaluate(user, withdrawal);
+        RiskRuleResult result = rule.evaluate(user, withdrawal);
 
-        assertTrue(result.isPresent());
-
-        assertEquals(
-                "User has repeated failed withdrawal "
-                        + "requests within a short time window",
-                result.get());
+        assertFalse(result.isTriggered());
 
         assertEquals(
                 "REPEATED_FAILED_REQUESTS",
-                rule.getRuleCode());
+                result.getRuleCode());
 
         assertEquals(
-                15,
-                rule.getRiskScore());
+                0,
+                result.getRiskScore());
+
+        assertNull(result.getExplanation());
     }
 
     @Test
-    void shouldNotTriggerWhenFewerThanFiveFailedRequestsExist() {
+    void shouldReturnTenPointsForThreeFailedRequests() {
 
         when(
                 auditLogRepository
                         .countByTargetUserIdAndActionAndCreatedAtAfter(
-                                eq(1L),
-                                eq("WITHDRAWAL_REQUEST_FAILED"),
+                                1L,
+                                "WITHDRAWAL_REQUEST_FAILED",
                                 any(LocalDateTime.class)))
-                .thenReturn(4L);
+                .thenReturn(3L);
 
-        Optional<String> result = rule.evaluate(user, withdrawal);
+        RiskRuleResult result = rule.evaluate(user, withdrawal);
 
-        assertTrue(result.isEmpty());
+        assertTrue(result.isTriggered());
+
+        assertEquals(
+                "REPEATED_FAILED_REQUESTS",
+                result.getRuleCode());
+
+        assertEquals(
+                10,
+                result.getRiskScore());
+
+        assertTrue(
+                result.getExplanation()
+                        .contains("3 failed withdrawal requests"));
     }
 
     @Test
-    void shouldNotTriggerWhenThereAreNoFailedRequests() {
+    void shouldReturnTwentyPointsForFiveFailedRequests() {
 
         when(
                 auditLogRepository
                         .countByTargetUserIdAndActionAndCreatedAtAfter(
-                                eq(1L),
-                                eq("WITHDRAWAL_REQUEST_FAILED"),
-                                any(LocalDateTime.class)))
-                .thenReturn(0L);
-
-        Optional<String> result = rule.evaluate(user, withdrawal);
-
-        assertTrue(result.isEmpty());
-    }
-
-    @Test
-    void shouldTriggerAtExactThreshold() {
-
-        when(
-                auditLogRepository
-                        .countByTargetUserIdAndActionAndCreatedAtAfter(
-                                eq(1L),
-                                eq("WITHDRAWAL_REQUEST_FAILED"),
+                                1L,
+                                "WITHDRAWAL_REQUEST_FAILED",
                                 any(LocalDateTime.class)))
                 .thenReturn(5L);
 
-        Optional<String> result = rule.evaluate(user, withdrawal);
+        RiskRuleResult result = rule.evaluate(user, withdrawal);
 
-        assertTrue(result.isPresent());
+        assertTrue(result.isTriggered());
+
+        assertEquals(
+                20,
+                result.getRiskScore());
+
+        assertTrue(
+                result.getExplanation()
+                        .contains("5 failed withdrawal requests"));
+    }
+
+    @Test
+    void shouldReturnMaximumScoreForEightOrMoreFailedRequests() {
+
+        when(
+                auditLogRepository
+                        .countByTargetUserIdAndActionAndCreatedAtAfter(
+                                1L,
+                                "WITHDRAWAL_REQUEST_FAILED",
+                                any(LocalDateTime.class)))
+                .thenReturn(8L);
+
+        RiskRuleResult result = rule.evaluate(user, withdrawal);
+
+        assertTrue(result.isTriggered());
+
+        assertEquals(
+                30,
+                result.getRiskScore());
+
+        assertTrue(
+                result.getExplanation()
+                        .contains("8 failed withdrawal requests"));
     }
 }

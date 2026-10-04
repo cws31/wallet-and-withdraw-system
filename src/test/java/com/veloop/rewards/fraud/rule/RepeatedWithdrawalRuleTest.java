@@ -1,6 +1,5 @@
 package com.veloop.rewards.fraud.rule;
 
-import com.veloop.rewards.fraud.entity.FraudRiskEvent;
 import com.veloop.rewards.fraud.repository.FraudRiskEventRepository;
 import com.veloop.rewards.user.entity.User;
 import com.veloop.rewards.withdrawal.entity.Withdrawal;
@@ -17,7 +16,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
-class RapidWithdrawalRuleTest {
+class RepeatedWithdrawalRuleTest {
 
     @Mock
     private FraudRiskEventRepository fraudRiskEventRepository;
@@ -28,11 +27,11 @@ class RapidWithdrawalRuleTest {
     @Mock
     private Withdrawal withdrawal;
 
-    private RapidWithdrawalRule rule;
+    private RepeatedWithdrawalRule rule;
 
     @BeforeEach
     void setUp() {
-        rule = new RapidWithdrawalRule(
+        rule = new RepeatedWithdrawalRule(
                 fraudRiskEventRepository);
     }
 
@@ -49,17 +48,20 @@ class RapidWithdrawalRuleTest {
         RiskRuleResult result = rule.evaluate(user, withdrawal);
 
         assertFalse(result.isTriggered());
+
         assertEquals(
-                "RAPID_WITHDRAWAL",
+                "REPEATED_WITHDRAWAL",
                 result.getRuleCode());
+
         assertEquals(
                 0,
                 result.getRiskScore());
+
         assertNull(result.getExplanation());
     }
 
     @Test
-    void shouldReturnTenPointsForSecondWithdrawal() {
+    void shouldNotTriggerForSecondWithdrawal() {
 
         when(
                 fraudRiskEventRepository
@@ -70,20 +72,15 @@ class RapidWithdrawalRuleTest {
 
         RiskRuleResult result = rule.evaluate(user, withdrawal);
 
-        assertTrue(result.isTriggered());
+        assertFalse(result.isTriggered());
+
         assertEquals(
-                "RAPID_WITHDRAWAL",
-                result.getRuleCode());
-        assertEquals(
-                10,
+                0,
                 result.getRiskScore());
-        assertTrue(
-                result.getExplanation()
-                        .contains("2 withdrawal requests"));
     }
 
     @Test
-    void shouldReturnTwentyFivePointsForThirdWithdrawal() {
+    void shouldReturnTenPointsForThirdWithdrawal() {
 
         when(
                 fraudRiskEventRepository
@@ -95,32 +92,40 @@ class RapidWithdrawalRuleTest {
         RiskRuleResult result = rule.evaluate(user, withdrawal);
 
         assertTrue(result.isTriggered());
+
         assertEquals(
-                25,
+                "REPEATED_WITHDRAWAL",
+                result.getRuleCode());
+
+        assertEquals(
+                10,
                 result.getRiskScore());
+
         assertTrue(
                 result.getExplanation()
                         .contains("3 withdrawal requests"));
     }
 
     @Test
-    void shouldIncreaseScoreForHigherWithdrawalFrequency() {
+    void shouldIncreaseScoreForHighWithdrawalFrequency() {
 
         when(
                 fraudRiskEventRepository
                         .countByUserAndCreatedAtAfter(
                                 any(User.class),
                                 any(LocalDateTime.class)))
-                .thenReturn(4L);
+                .thenReturn(7L);
 
         RiskRuleResult result = rule.evaluate(user, withdrawal);
 
         assertTrue(result.isTriggered());
+
         assertEquals(
-                35,
+                30,
                 result.getRiskScore());
+
         assertTrue(
                 result.getExplanation()
-                        .contains("5 withdrawal requests"));
+                        .contains("8 withdrawal requests"));
     }
 }

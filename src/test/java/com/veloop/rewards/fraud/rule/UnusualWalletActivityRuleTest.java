@@ -10,10 +10,11 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.LocalDateTime;
-import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class UnusualWalletActivityRuleTest {
@@ -40,66 +41,36 @@ class UnusualWalletActivityRuleTest {
     }
 
     @Test
-    void shouldTriggerWhenTenOrMoreTransactionsExist() {
+    void shouldReturnTenPointsForFiveTransactions() {
 
         when(
                 walletTransactionRepository
                         .countByUserIdAndCreatedAtAfter(
                                 eq(1L),
                                 any(LocalDateTime.class)))
-                .thenReturn(10L);
+                .thenReturn(5L);
 
-        Optional<String> result = rule.evaluate(user, withdrawal);
+        RiskRuleResult result = rule.evaluate(user, withdrawal);
 
-        assertTrue(result.isPresent());
-
-        assertEquals(
-                "User has unusually high wallet "
-                        + "transaction activity within "
-                        + "a short time window",
-                result.get());
+        assertTrue(result.isTriggered());
 
         assertEquals(
                 "UNUSUAL_WALLET_ACTIVITY",
-                rule.getRuleCode());
+                result.getRuleCode());
 
         assertEquals(
-                20,
-                rule.getRiskScore());
+                10,
+                result.getRiskScore());
+
+        assertNotNull(result.getExplanation());
+
+        assertTrue(
+                result.getExplanation()
+                        .contains("5 wallet transactions"));
     }
 
     @Test
-    void shouldNotTriggerWhenFewerThanTenTransactionsExist() {
-
-        when(
-                walletTransactionRepository
-                        .countByUserIdAndCreatedAtAfter(
-                                eq(1L),
-                                any(LocalDateTime.class)))
-                .thenReturn(9L);
-
-        Optional<String> result = rule.evaluate(user, withdrawal);
-
-        assertTrue(result.isEmpty());
-    }
-
-    @Test
-    void shouldNotTriggerWhenThereAreNoTransactions() {
-
-        when(
-                walletTransactionRepository
-                        .countByUserIdAndCreatedAtAfter(
-                                eq(1L),
-                                any(LocalDateTime.class)))
-                .thenReturn(0L);
-
-        Optional<String> result = rule.evaluate(user, withdrawal);
-
-        assertTrue(result.isEmpty());
-    }
-
-    @Test
-    void shouldTriggerAtExactThreshold() {
+    void shouldReturnTwentyPointsForTenTransactions() {
 
         when(
                 walletTransactionRepository
@@ -108,8 +79,72 @@ class UnusualWalletActivityRuleTest {
                                 any(LocalDateTime.class)))
                 .thenReturn(10L);
 
-        Optional<String> result = rule.evaluate(user, withdrawal);
+        RiskRuleResult result = rule.evaluate(user, withdrawal);
 
-        assertTrue(result.isPresent());
+        assertTrue(result.isTriggered());
+
+        assertEquals(
+                "UNUSUAL_WALLET_ACTIVITY",
+                result.getRuleCode());
+
+        assertEquals(
+                20,
+                result.getRiskScore());
+
+        assertTrue(
+                result.getExplanation()
+                        .contains("10 wallet transactions"));
+    }
+
+    @Test
+    void shouldNotTriggerWhenFewerThanFiveTransactionsExist() {
+
+        when(
+                walletTransactionRepository
+                        .countByUserIdAndCreatedAtAfter(
+                                eq(1L),
+                                any(LocalDateTime.class)))
+                .thenReturn(4L);
+
+        RiskRuleResult result = rule.evaluate(user, withdrawal);
+
+        assertFalse(result.isTriggered());
+
+        assertEquals(
+                "UNUSUAL_WALLET_ACTIVITY",
+                result.getRuleCode());
+
+        assertEquals(
+                0,
+                result.getRiskScore());
+
+        assertNull(result.getExplanation());
+    }
+
+    @Test
+    void shouldReturnMaximumScoreForSixteenOrMoreTransactions() {
+
+        when(
+                walletTransactionRepository
+                        .countByUserIdAndCreatedAtAfter(
+                                eq(1L),
+                                any(LocalDateTime.class)))
+                .thenReturn(16L);
+
+        RiskRuleResult result = rule.evaluate(user, withdrawal);
+
+        assertTrue(result.isTriggered());
+
+        assertEquals(
+                "UNUSUAL_WALLET_ACTIVITY",
+                result.getRuleCode());
+
+        assertEquals(
+                30,
+                result.getRiskScore());
+
+        assertTrue(
+                result.getExplanation()
+                        .contains("16 wallet transactions"));
     }
 }
