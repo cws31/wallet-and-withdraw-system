@@ -6,21 +6,29 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.Optional;
 
 public interface WithdrawalRepository
-        extends JpaRepository<Withdrawal, Long> {
+                extends JpaRepository<Withdrawal, Long> {
 
-    Optional<Withdrawal> findByWithdrawalId(String withdrawalId);
+        Optional<Withdrawal> findByWithdrawalId(String withdrawalId);
 
-    Page<Withdrawal> findByUserIdOrderByCreatedAtDesc(
-            Long userId,
-            Pageable pageable);
+        Page<Withdrawal> findByUserIdOrderByCreatedAtDesc(
+                        Long userId,
+                        Pageable pageable);
 
-    Page<Withdrawal> findByUserIdAndStatusOrderByCreatedAtDesc(
-            Long userId,
-            WithdrawalStatus status,
-            Pageable pageable);
+        Page<Withdrawal> findByUserIdAndStatusOrderByCreatedAtDesc(
+                        Long userId,
+                        WithdrawalStatus status,
+                        Pageable pageable);
 
-    boolean existsByWithdrawalId(String withdrawalId);
+        boolean existsByWithdrawalId(String withdrawalId);
+
+        long countByUserIdAndPayoutOptionIdAndCurrencyAmountAndCreatedAtAfter(
+                        Long userId,
+                        Long payoutOptionId,
+                        BigDecimal currencyAmount,
+                        LocalDateTime createdAt);
 }
