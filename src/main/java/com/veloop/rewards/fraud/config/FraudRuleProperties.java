@@ -11,6 +11,8 @@ public class FraudRuleProperties {
 
     private RepeatedWithdrawal repeatedWithdrawal = new RepeatedWithdrawal();
 
+    private FailedRequests failedRequests = new FailedRequests();
+
     public RapidWithdrawal getRapidWithdrawal() {
         return rapidWithdrawal;
     }
@@ -27,6 +29,15 @@ public class FraudRuleProperties {
     public void setRepeatedWithdrawal(
             RepeatedWithdrawal repeatedWithdrawal) {
         this.repeatedWithdrawal = repeatedWithdrawal;
+    }
+
+    public FailedRequests getFailedRequests() {
+        return failedRequests;
+    }
+
+    public void setFailedRequests(
+            FailedRequests failedRequests) {
+        this.failedRequests = failedRequests;
     }
 
     public static class RapidWithdrawal {
@@ -82,6 +93,46 @@ public class FraudRuleProperties {
 
         public void setWindowHours(long windowHours) {
             this.windowHours = windowHours;
+        }
+
+        public int getBaseline() {
+            return baseline;
+        }
+
+        public void setBaseline(int baseline) {
+            this.baseline = baseline;
+        }
+
+        public int getMaxExpected() {
+            return maxExpected;
+        }
+
+        public void setMaxExpected(int maxExpected) {
+            this.maxExpected = maxExpected;
+        }
+
+        public int getMaxScore() {
+            return maxScore;
+        }
+
+        public void setMaxScore(int maxScore) {
+            this.maxScore = maxScore;
+        }
+    }
+
+    public static class FailedRequests {
+
+        private long windowMinutes = 10;
+        private int baseline = 2;
+        private int maxExpected = 8;
+        private int maxScore = 35;
+
+        public long getWindowMinutes() {
+            return windowMinutes;
+        }
+
+        public void setWindowMinutes(long windowMinutes) {
+            this.windowMinutes = windowMinutes;
         }
 
         public int getBaseline() {

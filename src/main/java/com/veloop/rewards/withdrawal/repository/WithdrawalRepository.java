@@ -12,7 +12,8 @@ import java.util.Optional;
 public interface WithdrawalRepository
                 extends JpaRepository<Withdrawal, Long> {
 
-        Optional<Withdrawal> findByWithdrawalId(String withdrawalId);
+        Optional<Withdrawal> findByWithdrawalId(
+                        String withdrawalId);
 
         Page<Withdrawal> findByUserIdOrderByCreatedAtDesc(
                         Long userId,
@@ -23,9 +24,15 @@ public interface WithdrawalRepository
                         WithdrawalStatus status,
                         Pageable pageable);
 
-        boolean existsByWithdrawalId(String withdrawalId);
+        boolean existsByWithdrawalId(
+                        String withdrawalId);
 
         long countByUserIdAndCreatedAtAfter(
                         Long userId,
+                        LocalDateTime createdAt);
+
+        long countByUserIdAndStatusAndCreatedAtAfter(
+                        Long userId,
+                        WithdrawalStatus status,
                         LocalDateTime createdAt);
 }
