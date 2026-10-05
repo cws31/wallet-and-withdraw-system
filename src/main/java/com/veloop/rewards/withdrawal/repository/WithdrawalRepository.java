@@ -35,4 +35,9 @@ public interface WithdrawalRepository
                         Long userId,
                         WithdrawalStatus status,
                         LocalDateTime createdAt);
+
+        long countByUserIdAndPayoutOptionIdAndCreatedAtAfter(
+                        Long userId,
+                        Long payoutOptionId,
+                        LocalDateTime createdAt);
 }

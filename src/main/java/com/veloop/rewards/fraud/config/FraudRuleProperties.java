@@ -15,6 +15,8 @@ public class FraudRuleProperties {
 
     private UnusualWalletActivity unusualWalletActivity = new UnusualWalletActivity();
 
+    private SuspiciousPayout suspiciousPayout = new SuspiciousPayout();
+
     public RapidWithdrawal getRapidWithdrawal() {
         return rapidWithdrawal;
     }
@@ -49,6 +51,15 @@ public class FraudRuleProperties {
     public void setUnusualWalletActivity(
             UnusualWalletActivity unusualWalletActivity) {
         this.unusualWalletActivity = unusualWalletActivity;
+    }
+
+    public SuspiciousPayout getSuspiciousPayout() {
+        return suspiciousPayout;
+    }
+
+    public void setSuspiciousPayout(
+            SuspiciousPayout suspiciousPayout) {
+        this.suspiciousPayout = suspiciousPayout;
     }
 
     public static class RapidWithdrawal {
@@ -189,6 +200,50 @@ public class FraudRuleProperties {
         private int baseline = 4;
         private int maxExpected = 16;
         private int maxScore = 35;
+
+        public long getWindowMinutes() {
+            return windowMinutes;
+        }
+
+        public void setWindowMinutes(
+                long windowMinutes) {
+            this.windowMinutes = windowMinutes;
+        }
+
+        public int getBaseline() {
+            return baseline;
+        }
+
+        public void setBaseline(
+                int baseline) {
+            this.baseline = baseline;
+        }
+
+        public int getMaxExpected() {
+            return maxExpected;
+        }
+
+        public void setMaxExpected(
+                int maxExpected) {
+            this.maxExpected = maxExpected;
+        }
+
+        public int getMaxScore() {
+            return maxScore;
+        }
+
+        public void setMaxScore(
+                int maxScore) {
+            this.maxScore = maxScore;
+        }
+    }
+
+    public static class SuspiciousPayout {
+
+        private long windowMinutes = 30;
+        private int baseline = 1;
+        private int maxExpected = 7;
+        private int maxScore = 45;
 
         public long getWindowMinutes() {
             return windowMinutes;
