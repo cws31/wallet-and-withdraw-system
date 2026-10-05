@@ -1,9 +1,9 @@
 package com.veloop.rewards.fraud.rule;
 
-import com.veloop.rewards.fraud.entity.FraudRiskEvent;
-import com.veloop.rewards.fraud.repository.FraudRiskEventRepository;
-import com.veloop.rewards.user.entity.User;
-import com.veloop.rewards.withdrawal.entity.Withdrawal;
+import com.veloop.rewards.fraud.config.FraudRuleProperties;
+import com.veloop.rewards.fraud.service.FraudRiskRule;
+import com.veloop.rewards.fraud.service.RiskRuleResult;
+import com.veloop.rewards.withdrawal.repository.WithdrawalRepository;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDateTime;
@@ -11,72 +11,110 @@ import java.time.LocalDateTime;
 @Component
 public class RapidWithdrawalRule implements FraudRiskRule {
 
-    private static final String RULE_CODE = "RAPID_WITHDRAWAL";
+    public static final String RULE_CODE = "RAPID_WITHDRAWAL";
 
-    private static final int WINDOW_MINUTES = 5;
-
-    private final FraudRiskEventRepository fraudRiskEventRepository;
+    private final WithdrawalRepository withdrawalRepository;
+    private final FraudRuleProperties properties;
 
     public RapidWithdrawalRule(
-            FraudRiskEventRepository fraudRiskEventRepository) {
-
-        this.fraudRiskEventRepository = fraudRiskEventRepository;
-    }
-
-    @Override
-    public String getRuleCode() {
-        return RULE_CODE;
+            WithdrawalRepository withdrawalRepository,
+            FraudRuleProperties properties) {
+        this.withdrawalRepository = withdrawalRepository;
+        this.properties = properties;
     }
 
     @Override
     public RiskRuleResult evaluate(
-            User user,
-            Withdrawal withdrawal) {
+            Long userId,
+            LocalDateTime evaluationTime) {
 
-        LocalDateTime windowStart = LocalDateTime.now()
-                .minusMinutes(WINDOW_MINUTES);
+        FraudRuleProperties.RapidWithdrawal configuration = properties.getRapidWithdrawal();
 
-        long recentRiskEvents = fraudRiskEventRepository
-                .countByUserAndCreatedAtAfter(
-                        user,
-                        windowStart);
+        validateConfiguration(configuration);
 
-        long withdrawalCount = recentRiskEvents + 1;
+        LocalDateTime windowStart = evaluationTime
+                .minusMinutes(configuration.getWindowMinutes());
 
-        if (withdrawalCount < 2) {
+        long previousWithdrawals = withdrawalRepository
+                .countByUserIdAndCreatedAtAfter(userId, windowStart);
+
+        long observedWithdrawals = previousWithdrawals + 1;
+
+        double severity = calculateSeverity(
+                observedWithdrawals,
+                configuration.getBaseline(),
+                configuration.getMaxExpected());
+
+        int riskScore = calculateRiskScore(
+                severity,
+                configuration.getMaxScore());
+
+        if (riskScore <= 0) {
             return RiskRuleResult.notTriggered(
-                    RULE_CODE);
+                    RULE_CODE,
+                    "Detected " + observedWithdrawals
+                            + " withdrawal attempt(s) within "
+                            + configuration.getWindowMinutes()
+                            + " minutes. Configured baseline is "
+                            + configuration.getBaseline()
+                            + ". Calculated severity is "
+                            + format(severity)
+                            + ". Dynamic risk contribution is 0.");
         }
 
-        int riskScore = calculateRiskScore(withdrawalCount);
-
-        String explanation = "Detected "
-                + withdrawalCount
-                + " withdrawal requests within "
-                + WINDOW_MINUTES
-                + " minutes";
-
-        return RiskRuleResult.triggered(
+        return new RiskRuleResult(
+                true,
                 RULE_CODE,
                 riskScore,
-                explanation);
+                "Detected " + observedWithdrawals
+                        + " withdrawal attempt(s) within "
+                        + configuration.getWindowMinutes()
+                        + " minutes. Configured baseline is "
+                        + configuration.getBaseline()
+                        + ", maximum expected activity is "
+                        + configuration.getMaxExpected()
+                        + ", calculated severity is "
+                        + format(severity)
+                        + ", and dynamic risk contribution is "
+                        + riskScore + ".");
     }
 
-    private int calculateRiskScore(
-            long withdrawalCount) {
+    static double calculateSeverity(
+            long observed,
+            int baseline,
+            int maximumExpected) {
 
-        if (withdrawalCount == 2) {
-            return 10;
+        if (observed <= baseline) {
+            return 0.0d;
         }
 
-        if (withdrawalCount == 3) {
-            return 25;
-        }
+        double severity = (double) (observed - baseline)
+                / (maximumExpected - baseline);
 
-        if (withdrawalCount == 4) {
-            return 30;
-        }
+        return Math.min(1.0d, Math.max(0.0d, severity));
+    }
 
-        return 35;
+    static int calculateRiskScore(
+            double severity,
+            int maximumRuleScore) {
+
+        return (int) Math.round(
+                maximumRuleScore * severity * severity);
+    }
+
+    private void validateConfiguration(
+            FraudRuleProperties.RapidWithdrawal configuration) {
+
+        if (configuration.getWindowMinutes() <= 0
+                || configuration.getBaseline() < 0
+                || configuration.getMaxExpected() <= configuration.getBaseline()
+                || configuration.getMaxScore() < 0) {
+            throw new IllegalStateException(
+                    "Invalid rapid withdrawal fraud rule configuration");
+        }
+    }
+
+    private String format(double value) {
+        return String.format(java.util.Locale.ROOT, "%.4f", value);
     }
 }

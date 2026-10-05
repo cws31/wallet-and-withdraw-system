@@ -6,7 +6,6 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 
-import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.Optional;
 
@@ -26,9 +25,7 @@ public interface WithdrawalRepository
 
         boolean existsByWithdrawalId(String withdrawalId);
 
-        long countByUserIdAndPayoutOptionIdAndCurrencyAmountAndCreatedAtAfter(
+        long countByUserIdAndCreatedAtAfter(
                         Long userId,
-                        Long payoutOptionId,
-                        BigDecimal currencyAmount,
                         LocalDateTime createdAt);
 }

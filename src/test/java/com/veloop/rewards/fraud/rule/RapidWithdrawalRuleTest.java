@@ -1,9 +1,8 @@
 package com.veloop.rewards.fraud.rule;
 
-import com.veloop.rewards.fraud.entity.FraudRiskEvent;
-import com.veloop.rewards.fraud.repository.FraudRiskEventRepository;
-import com.veloop.rewards.user.entity.User;
-import com.veloop.rewards.withdrawal.entity.Withdrawal;
+import com.veloop.rewards.fraud.config.FraudRuleProperties;
+import com.veloop.rewards.fraud.service.RiskRuleResult;
+import com.veloop.rewards.withdrawal.repository.WithdrawalRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -13,114 +12,139 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.time.LocalDateTime;
 
 import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class RapidWithdrawalRuleTest {
 
-    @Mock
-    private FraudRiskEventRepository fraudRiskEventRepository;
+        @Mock
+        private WithdrawalRepository withdrawalRepository;
 
-    @Mock
-    private User user;
+        private FraudRuleProperties properties;
+        private RapidWithdrawalRule rule;
+        private final LocalDateTime evaluationTime = LocalDateTime.of(2026, 10, 5, 12, 0);
 
-    @Mock
-    private Withdrawal withdrawal;
+        @BeforeEach
+        void setUp() {
+                properties = new FraudRuleProperties();
+                rule = new RapidWithdrawalRule(
+                                withdrawalRepository,
+                                properties);
+        }
 
-    private RapidWithdrawalRule rule;
+        @Test
+        void shouldAllowNormalActivity() {
+                when(withdrawalRepository.countByUserIdAndCreatedAtAfter(
+                                1L,
+                                evaluationTime.minusMinutes(5)))
+                                .thenReturn(0L);
 
-    @BeforeEach
-    void setUp() {
-        rule = new RapidWithdrawalRule(
-                fraudRiskEventRepository);
-    }
+                RiskRuleResult result = rule.evaluate(1L, evaluationTime);
 
-    @Test
-    void shouldNotTriggerForFirstWithdrawal() {
+                assertFalse(result.triggered());
+                assertEquals(0, result.riskScore());
+        }
 
-        when(
-                fraudRiskEventRepository
-                        .countByUserAndCreatedAtAfter(
-                                any(User.class),
-                                any(LocalDateTime.class)))
-                .thenReturn(0L);
+        @Test
+        void shouldCalculateProgressivelyForElevatedActivity() {
+                when(withdrawalRepository.countByUserIdAndCreatedAtAfter(
+                                1L,
+                                evaluationTime.minusMinutes(5)))
+                                .thenReturn(1L, 2L, 3L);
 
-        RiskRuleResult result = rule.evaluate(user, withdrawal);
+                assertEquals(
+                                3,
+                                rule.evaluate(1L, evaluationTime).riskScore());
 
-        assertFalse(result.isTriggered());
-        assertEquals(
-                "RAPID_WITHDRAWAL",
-                result.getRuleCode());
-        assertEquals(
-                0,
-                result.getRiskScore());
-        assertNull(result.getExplanation());
-    }
+                assertEquals(
+                                10,
+                                rule.evaluate(1L, evaluationTime).riskScore());
 
-    @Test
-    void shouldReturnTenPointsForSecondWithdrawal() {
+                assertEquals(
+                                23,
+                                rule.evaluate(1L, evaluationTime).riskScore());
+        }
 
-        when(
-                fraudRiskEventRepository
-                        .countByUserAndCreatedAtAfter(
-                                any(User.class),
-                                any(LocalDateTime.class)))
-                .thenReturn(1L);
+        @Test
+        void shouldReachConfiguredMaximumAtOrAboveMaximumExpectedActivity() {
+                when(withdrawalRepository.countByUserIdAndCreatedAtAfter(
+                                1L,
+                                evaluationTime.minusMinutes(5)))
+                                .thenReturn(4L, 9L);
 
-        RiskRuleResult result = rule.evaluate(user, withdrawal);
+                assertEquals(
+                                40,
+                                rule.evaluate(1L, evaluationTime).riskScore());
 
-        assertTrue(result.isTriggered());
-        assertEquals(
-                "RAPID_WITHDRAWAL",
-                result.getRuleCode());
-        assertEquals(
-                10,
-                result.getRiskScore());
-        assertTrue(
-                result.getExplanation()
-                        .contains("2 withdrawal requests"));
-    }
+                assertEquals(
+                                40,
+                                rule.evaluate(1L, evaluationTime).riskScore());
+        }
 
-    @Test
-    void shouldReturnTwentyFivePointsForThirdWithdrawal() {
+        @Test
+        void shouldRespectConfigurationChanges() {
+                when(withdrawalRepository.countByUserIdAndCreatedAtAfter(
+                                1L,
+                                evaluationTime.minusMinutes(5)))
+                                .thenReturn(3L, 3L);
 
-        when(
-                fraudRiskEventRepository
-                        .countByUserAndCreatedAtAfter(
-                                any(User.class),
-                                any(LocalDateTime.class)))
-                .thenReturn(2L);
+                properties.getRapidWithdrawal().setMaxScore(40);
 
-        RiskRuleResult result = rule.evaluate(user, withdrawal);
+                int scoreWithFortyMax = rule.evaluate(1L, evaluationTime).riskScore();
 
-        assertTrue(result.isTriggered());
-        assertEquals(
-                25,
-                result.getRiskScore());
-        assertTrue(
-                result.getExplanation()
-                        .contains("3 withdrawal requests"));
-    }
+                properties.getRapidWithdrawal().setMaxScore(60);
 
-    @Test
-    void shouldIncreaseScoreForHigherWithdrawalFrequency() {
+                int scoreWithSixtyMax = rule.evaluate(1L, evaluationTime).riskScore();
 
-        when(
-                fraudRiskEventRepository
-                        .countByUserAndCreatedAtAfter(
-                                any(User.class),
-                                any(LocalDateTime.class)))
-                .thenReturn(4L);
+                assertEquals(23, scoreWithFortyMax);
+                assertEquals(34, scoreWithSixtyMax);
+                assertNotEquals(
+                                scoreWithFortyMax,
+                                scoreWithSixtyMax);
+        }
 
-        RiskRuleResult result = rule.evaluate(user, withdrawal);
+        @Test
+        void shouldRespectConfiguredWindow() {
+                when(withdrawalRepository.countByUserIdAndCreatedAtAfter(
+                                1L,
+                                evaluationTime.minusMinutes(10)))
+                                .thenReturn(2L);
 
-        assertTrue(result.isTriggered());
-        assertEquals(
-                35,
-                result.getRiskScore());
-        assertTrue(
-                result.getExplanation()
-                        .contains("5 withdrawal requests"));
-    }
+                properties.getRapidWithdrawal().setWindowMinutes(10);
+
+                RiskRuleResult result = rule.evaluate(1L, evaluationTime);
+
+                assertEquals(10, result.riskScore());
+        }
+
+        @Test
+        void shouldClampSeverityAtZeroAndOne() {
+                assertEquals(
+                                0.0,
+                                RapidWithdrawalRule.calculateSeverity(
+                                                1,
+                                                1,
+                                                5));
+
+                assertEquals(
+                                0.0,
+                                RapidWithdrawalRule.calculateSeverity(
+                                                0,
+                                                1,
+                                                5));
+
+                assertEquals(
+                                1.0,
+                                RapidWithdrawalRule.calculateSeverity(
+                                                5,
+                                                1,
+                                                5));
+
+                assertEquals(
+                                1.0,
+                                RapidWithdrawalRule.calculateSeverity(
+                                                50,
+                                                1,
+                                                5));
+        }
 }

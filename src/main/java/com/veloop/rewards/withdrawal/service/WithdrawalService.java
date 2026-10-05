@@ -1,6 +1,10 @@
 package com.veloop.rewards.withdrawal.service;
 
 import com.veloop.rewards.audit.service.AuditLogService;
+import com.veloop.rewards.fraud.enums.FraudRiskDecision;
+import com.veloop.rewards.fraud.exception.FraudRiskBlockedException;
+import com.veloop.rewards.fraud.service.FraudRiskEvaluation;
+import com.veloop.rewards.fraud.service.FraudRiskService;
 import com.veloop.rewards.audit.service.WithdrawalAuditService;
 import com.veloop.rewards.common.exception.InvalidWithdrawalRequestException;
 import com.veloop.rewards.common.exception.InvalidWithdrawalStateException;
@@ -55,6 +59,7 @@ public class WithdrawalService {
         private final WithdrawalAuditService withdrawalAuditService;
         private final AuditLogService auditLogService;
         private final WithdrawalEligibilityService withdrawalEligibilityService;
+        private final FraudRiskService fraudRiskService;
 
         public WithdrawalService(
                         WithdrawalRepository withdrawalRepository,
@@ -68,7 +73,8 @@ public class WithdrawalService {
                         WithdrawalAuditService withdrawalAuditService,
                         AuditLogService auditLogService,
                         WithdrawalEligibilityService withdrawalEligibilityService,
-                        PayoutOptionValidator payoutOptionValidator) {
+                        PayoutOptionValidator payoutOptionValidator,
+                        FraudRiskService fraudRiskService) {
 
                 this.withdrawalRepository = withdrawalRepository;
                 this.withdrawalIdempotencyService = withdrawalIdempotencyService;
@@ -82,6 +88,7 @@ public class WithdrawalService {
                 this.auditLogService = auditLogService;
                 this.withdrawalEligibilityService = withdrawalEligibilityService;
                 this.payoutOptionValidator = payoutOptionValidator;
+                this.fraudRiskService = fraudRiskService;
         }
 
         @Transactional
@@ -139,8 +146,75 @@ public class WithdrawalService {
 
                 BigDecimal payoutAmount = payoutOption.getPayoutAmount();
                 BigDecimal vesRequired = payoutOption.getCurrencyAmount();
+                LocalDateTime now = LocalDateTime.now();
+
+                FraudRiskEvaluation fraudEvaluation = fraudRiskService.evaluate(
+                                userId,
+                                now);
+
+                if (fraudEvaluation.decision() == FraudRiskDecision.BLOCK) {
+                        fraudRiskService.saveBlockedEvent(
+                                        userId,
+                                        fraudEvaluation);
+
+                        throw new FraudRiskBlockedException(
+                                        "Withdrawal blocked by fraud risk controls. Risk score: "
+                                                        + fraudEvaluation.totalRiskScore());
+                }
 
                 String withdrawalId = "WD-" + UUID.randomUUID();
+                Withdrawal withdrawal = new Withdrawal();
+
+                withdrawal.setWithdrawalId(withdrawalId);
+                withdrawal.setUser(user);
+                withdrawal.setPayoutMethod(payoutMethod);
+                withdrawal.setPayoutOption(payoutOption);
+                withdrawal.setCurrency(payoutOption.getCurrency());
+                withdrawal.setCurrencyAmount(payoutAmount);
+                withdrawal.setPayoutAmount(vesRequired);
+                withdrawal.setPayoutDetails(request.getPayoutDetails().trim());
+                withdrawal.setStatus(WithdrawalStatus.PENDING);
+                withdrawal.setRequestedAt(now);
+                withdrawal.setCreatedAt(now);
+                withdrawal.setUpdatedAt(now);
+
+                if (fraudEvaluation.decision() == FraudRiskDecision.REVIEW) {
+                        withdrawal.setReviewNote(
+                                        "Fraud review required. Risk score: "
+                                                        + fraudEvaluation.totalRiskScore());
+
+                        Withdrawal savedWithdrawal = withdrawalRepository.save(withdrawal);
+
+                        withdrawalAuditService.record(
+                                        savedWithdrawal,
+                                        "CREATED",
+                                        null,
+                                        WithdrawalStatus.PENDING,
+                                        user,
+                                        "Withdrawal created and placed under fraud review");
+
+                        auditLogService.record(
+                                        null,
+                                        user,
+                                        "WITHDRAWAL",
+                                        "WITHDRAWAL_CREATED",
+                                        savedWithdrawal.getWithdrawalId(),
+                                        "status=PENDING, fraudDecision=REVIEW, riskScore="
+                                                        + fraudEvaluation.totalRiskScore());
+
+                        fraudRiskService.saveEvent(
+                                        userId,
+                                        savedWithdrawal,
+                                        fraudEvaluation);
+
+                        withdrawalIdempotencyService.createRecord(
+                                        user,
+                                        normalizedIdempotencyKey,
+                                        requestFingerprint,
+                                        savedWithdrawal);
+
+                        return toResponse(savedWithdrawal);
+                }
 
                 WalletDebitRequest debitRequest = new WalletDebitRequest(
                                 Currency.VES,
@@ -160,36 +234,7 @@ public class WithdrawalService {
                                 .orElseThrow(() -> new WithdrawalTransactionException(
                                                 "Withdrawal wallet transaction was not created"));
 
-                Withdrawal withdrawal = new Withdrawal();
-
-                withdrawal.setWithdrawalId(withdrawalId);
-                withdrawal.setUser(user);
-                withdrawal.setPayoutMethod(payoutMethod);
-                withdrawal.setPayoutOption(payoutOption);
-
-                withdrawal.setCurrency(
-                                payoutOption.getCurrency());
-
-                withdrawal.setCurrencyAmount(
-                                payoutAmount);
-
-                withdrawal.setPayoutAmount(
-                                vesRequired);
-
-                withdrawal.setPayoutDetails(
-                                request.getPayoutDetails().trim());
-
-                withdrawal.setStatus(
-                                WithdrawalStatus.PENDING);
-
-                withdrawal.setTransaction(
-                                walletTransaction);
-
-                LocalDateTime now = LocalDateTime.now();
-
-                withdrawal.setRequestedAt(now);
-                withdrawal.setCreatedAt(now);
-                withdrawal.setUpdatedAt(now);
+                withdrawal.setTransaction(walletTransaction);
 
                 Withdrawal savedWithdrawal = withdrawalRepository.save(withdrawal);
 
@@ -218,6 +263,11 @@ public class WithdrawalService {
                                                 + savedWithdrawal.getCurrencyAmount()
                                                 + ", payoutAmount="
                                                 + savedWithdrawal.getPayoutAmount());
+
+                fraudRiskService.saveEvent(
+                                userId,
+                                savedWithdrawal,
+                                fraudEvaluation);
 
                 withdrawalIdempotencyService.createRecord(
                                 user,
@@ -336,6 +386,30 @@ public class WithdrawalService {
                 User adminUser = userRepository.findById(adminUserId)
                                 .orElseThrow(() -> new InvalidWithdrawalRequestException(
                                                 "Admin user not found"));
+
+                if (withdrawal.getTransaction() == null) {
+                        String approvedWithdrawalId = withdrawal.getWithdrawalId();
+
+                        WalletDebitRequest debitRequest = new WalletDebitRequest(
+                                        Currency.VES,
+                                        withdrawal.getPayoutAmount(),
+                                        TransactionType.WITHDRAWAL,
+                                        "WITHDRAWAL",
+                                        approvedWithdrawalId,
+                                        "Wallet withdrawal approved after fraud review",
+                                        null);
+
+                        walletService.debitWallet(
+                                        withdrawal.getUser().getId(),
+                                        debitRequest);
+
+                        WalletTransaction walletTransaction = walletTransactionRepository
+                                        .findByReferenceId(approvedWithdrawalId)
+                                        .orElseThrow(() -> new WithdrawalTransactionException(
+                                                        "Withdrawal wallet transaction was not created"));
+
+                        withdrawal.setTransaction(walletTransaction);
+                }
 
                 WithdrawalStatus oldStatus = withdrawal.getStatus();
 
@@ -502,8 +576,33 @@ public class WithdrawalService {
                 WalletTransaction originalTransaction = withdrawal.getTransaction();
 
                 if (originalTransaction == null) {
-                        throw new WithdrawalTransactionException(
-                                        "Original withdrawal transaction not found");
+                        WithdrawalStatus oldStatus = withdrawal.getStatus();
+                        LocalDateTime now = LocalDateTime.now();
+
+                        withdrawal.setStatus(WithdrawalStatus.CANCELLED);
+                        withdrawal.setProcessedAt(now);
+                        withdrawal.setUpdatedAt(now);
+
+                        Withdrawal savedWithdrawal = withdrawalRepository.save(withdrawal);
+
+                        withdrawalAuditService.record(
+                                        savedWithdrawal,
+                                        "CANCELLED",
+                                        oldStatus,
+                                        WithdrawalStatus.CANCELLED,
+                                        withdrawal.getUser(),
+                                        "Fraud-review withdrawal cancelled before wallet debit");
+
+                        auditLogService.record(
+                                        withdrawal.getUser(),
+                                        savedWithdrawal.getUser(),
+                                        "WITHDRAWAL",
+                                        "WITHDRAWAL_CANCELLED",
+                                        savedWithdrawal.getWithdrawalId(),
+                                        "oldStatus=" + oldStatus
+                                                        + ", newStatus=" + WithdrawalStatus.CANCELLED);
+
+                        return toResponse(savedWithdrawal);
                 }
 
                 if (originalTransaction.getCurrency() != Currency.VES) {
