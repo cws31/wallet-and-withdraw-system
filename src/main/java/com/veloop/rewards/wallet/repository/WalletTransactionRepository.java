@@ -1,6 +1,7 @@
 package com.veloop.rewards.wallet.repository;
 
 import com.veloop.rewards.wallet.entity.WalletTransaction;
+import com.veloop.rewards.wallet.enums.TransactionStatus;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -11,19 +12,28 @@ import java.util.Optional;
 public interface WalletTransactionRepository
                 extends JpaRepository<WalletTransaction, Long> {
 
-        Optional<WalletTransaction> findByTransactionId(String transactionId);
+        Optional<WalletTransaction> findByTransactionId(
+                        String transactionId);
 
-        boolean existsByTransactionId(String transactionId);
+        boolean existsByTransactionId(
+                        String transactionId);
 
-        Optional<WalletTransaction> findByReferenceId(String referenceId);
+        Optional<WalletTransaction> findByReferenceId(
+                        String referenceId);
 
         Page<WalletTransaction> findByUserIdOrderByCreatedAtDesc(
                         Long userId,
                         Pageable pageable);
 
-        long countByUserId(Long userId);
+        long countByUserId(
+                        Long userId);
 
         long countByUserIdAndCreatedAtAfter(
                         Long userId,
+                        LocalDateTime createdAt);
+
+        long countByUserIdAndStatusAndCreatedAtAfter(
+                        Long userId,
+                        TransactionStatus status,
                         LocalDateTime createdAt);
 }

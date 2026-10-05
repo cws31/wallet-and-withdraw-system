@@ -13,6 +13,8 @@ public class FraudRuleProperties {
 
     private FailedRequests failedRequests = new FailedRequests();
 
+    private UnusualWalletActivity unusualWalletActivity = new UnusualWalletActivity();
+
     public RapidWithdrawal getRapidWithdrawal() {
         return rapidWithdrawal;
     }
@@ -40,6 +42,15 @@ public class FraudRuleProperties {
         this.failedRequests = failedRequests;
     }
 
+    public UnusualWalletActivity getUnusualWalletActivity() {
+        return unusualWalletActivity;
+    }
+
+    public void setUnusualWalletActivity(
+            UnusualWalletActivity unusualWalletActivity) {
+        this.unusualWalletActivity = unusualWalletActivity;
+    }
+
     public static class RapidWithdrawal {
 
         private long windowMinutes = 5;
@@ -51,7 +62,8 @@ public class FraudRuleProperties {
             return windowMinutes;
         }
 
-        public void setWindowMinutes(long windowMinutes) {
+        public void setWindowMinutes(
+                long windowMinutes) {
             this.windowMinutes = windowMinutes;
         }
 
@@ -59,7 +71,8 @@ public class FraudRuleProperties {
             return baseline;
         }
 
-        public void setBaseline(int baseline) {
+        public void setBaseline(
+                int baseline) {
             this.baseline = baseline;
         }
 
@@ -67,7 +80,8 @@ public class FraudRuleProperties {
             return maxExpected;
         }
 
-        public void setMaxExpected(int maxExpected) {
+        public void setMaxExpected(
+                int maxExpected) {
             this.maxExpected = maxExpected;
         }
 
@@ -75,7 +89,8 @@ public class FraudRuleProperties {
             return maxScore;
         }
 
-        public void setMaxScore(int maxScore) {
+        public void setMaxScore(
+                int maxScore) {
             this.maxScore = maxScore;
         }
     }
@@ -91,7 +106,8 @@ public class FraudRuleProperties {
             return windowHours;
         }
 
-        public void setWindowHours(long windowHours) {
+        public void setWindowHours(
+                long windowHours) {
             this.windowHours = windowHours;
         }
 
@@ -99,7 +115,8 @@ public class FraudRuleProperties {
             return baseline;
         }
 
-        public void setBaseline(int baseline) {
+        public void setBaseline(
+                int baseline) {
             this.baseline = baseline;
         }
 
@@ -107,7 +124,8 @@ public class FraudRuleProperties {
             return maxExpected;
         }
 
-        public void setMaxExpected(int maxExpected) {
+        public void setMaxExpected(
+                int maxExpected) {
             this.maxExpected = maxExpected;
         }
 
@@ -115,7 +133,8 @@ public class FraudRuleProperties {
             return maxScore;
         }
 
-        public void setMaxScore(int maxScore) {
+        public void setMaxScore(
+                int maxScore) {
             this.maxScore = maxScore;
         }
     }
@@ -131,7 +150,8 @@ public class FraudRuleProperties {
             return windowMinutes;
         }
 
-        public void setWindowMinutes(long windowMinutes) {
+        public void setWindowMinutes(
+                long windowMinutes) {
             this.windowMinutes = windowMinutes;
         }
 
@@ -139,7 +159,8 @@ public class FraudRuleProperties {
             return baseline;
         }
 
-        public void setBaseline(int baseline) {
+        public void setBaseline(
+                int baseline) {
             this.baseline = baseline;
         }
 
@@ -147,7 +168,8 @@ public class FraudRuleProperties {
             return maxExpected;
         }
 
-        public void setMaxExpected(int maxExpected) {
+        public void setMaxExpected(
+                int maxExpected) {
             this.maxExpected = maxExpected;
         }
 
@@ -155,7 +177,52 @@ public class FraudRuleProperties {
             return maxScore;
         }
 
-        public void setMaxScore(int maxScore) {
+        public void setMaxScore(
+                int maxScore) {
+            this.maxScore = maxScore;
+        }
+    }
+
+    public static class UnusualWalletActivity {
+
+        private long windowMinutes = 15;
+        private int baseline = 4;
+        private int maxExpected = 16;
+        private int maxScore = 35;
+
+        public long getWindowMinutes() {
+            return windowMinutes;
+        }
+
+        public void setWindowMinutes(
+                long windowMinutes) {
+            this.windowMinutes = windowMinutes;
+        }
+
+        public int getBaseline() {
+            return baseline;
+        }
+
+        public void setBaseline(
+                int baseline) {
+            this.baseline = baseline;
+        }
+
+        public int getMaxExpected() {
+            return maxExpected;
+        }
+
+        public void setMaxExpected(
+                int maxExpected) {
+            this.maxExpected = maxExpected;
+        }
+
+        public int getMaxScore() {
+            return maxScore;
+        }
+
+        public void setMaxScore(
+                int maxScore) {
             this.maxScore = maxScore;
         }
     }
