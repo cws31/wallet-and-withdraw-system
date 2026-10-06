@@ -81,52 +81,34 @@ class WithdrawalConcurrencyIntegrationTest {
 
                 String uniqueId = String.valueOf(System.nanoTime());
 
-                User user = new User();
+                User user = User.builder()
+                                .name("Concurrency Test User")
+                                .email("concurrency-" + uniqueId + "@example.com")
+                                .passwordHash("test-password-hash")
+                                .role("USER")
+                                .accountStatus("ACTIVE")
+                                .verified(true)
+                                .level(0)
+                                .build();
 
-                user.setEmail(
-                                "withdrawal-concurrency-"
-                                                + uniqueId
-                                                + "@test.com");
-
-                user.setPasswordHash("test-password");
-                user.setName("Withdrawal Concurrency Test User");
-
-                user.setAccountStatus("ACTIVE");
-                user.setVerified(true);
-
-                User savedUser = userRepository.save(user);
-
+                User savedUser = userRepository.saveAndFlush(user);
                 testUserId = savedUser.getId();
 
                 walletService.createWallet(testUserId);
 
-                /*
-                 * Use the payout method initialized by
-                 * PayoutConfigurationInitializer.
-                 *
-                 * Do not create another UPI method because
-                 * payout_methods.code is unique.
-                 */
                 upiMethod = payoutMethodRepository
                                 .findByCode("UPI")
                                 .orElseThrow(() -> new IllegalStateException(
-                                                "UPI payout method was not initialized"));
-
-                assertTrue(
-                                Boolean.TRUE.equals(upiMethod.getActive()),
-                                "UPI payout method must be active for this test");
+                                                "UPI payout method not found"));
 
                 tenRupeeOption = new PayoutOption();
-
                 tenRupeeOption.setMethod(upiMethod);
-                tenRupeeOption.setPayoutAmount(
-                                new BigDecimal("10"));
+                tenRupeeOption.setPayoutAmount(new BigDecimal("10"));
                 tenRupeeOption.setCurrency("INR");
-                tenRupeeOption.setCurrencyAmount(
-                                new BigDecimal("2400"));
+                tenRupeeOption.setCurrencyAmount(new BigDecimal("2400"));
                 tenRupeeOption.setActive(true);
 
-                tenRupeeOption = payoutOptionRepository.save(
+                tenRupeeOption = payoutOptionRepository.saveAndFlush(
                                 tenRupeeOption);
 
                 walletService.creditWallet(
@@ -135,18 +117,14 @@ class WithdrawalConcurrencyIntegrationTest {
                                                 Currency.VES,
                                                 new BigDecimal("10000"),
                                                 TransactionType.REWARD,
-                                                "WITHDRAWAL_CONCURRENCY_TEST",
-                                                "TEST-CREDIT-" + uniqueId,
-                                                "Concurrency integration test credit",
+                                                "TEST",
+                                                "CONCURRENCY-SETUP-" + uniqueId,
+                                                "Concurrency test wallet credit",
                                                 null));
         }
 
         @AfterEach
         void tearDown() {
-
-                if (testUserId == null) {
-                        return;
-                }
 
                 jdbcTemplate.update("""
                                 DELETE FROM withdrawal_idempotency
@@ -168,6 +146,16 @@ class WithdrawalConcurrencyIntegrationTest {
 
                 jdbcTemplate.update("""
                                 DELETE FROM withdrawal_audit
+                                WHERE withdrawal_id IN (
+                                    SELECT id
+                                    FROM withdrawals
+                                    WHERE user_id = ?
+                                )
+                                """,
+                                testUserId);
+
+                jdbcTemplate.update("""
+                                DELETE FROM fraud_risk_events
                                 WHERE user_id = ?
                                 """,
                                 testUserId);
