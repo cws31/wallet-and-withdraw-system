@@ -17,6 +17,8 @@ public class FraudRuleProperties {
 
     private SuspiciousPayout suspiciousPayout = new SuspiciousPayout();
 
+    private SuspiciousAccountActivity suspiciousAccountActivity = new SuspiciousAccountActivity();
+
     public RapidWithdrawal getRapidWithdrawal() {
         return rapidWithdrawal;
     }
@@ -60,6 +62,15 @@ public class FraudRuleProperties {
     public void setSuspiciousPayout(
             SuspiciousPayout suspiciousPayout) {
         this.suspiciousPayout = suspiciousPayout;
+    }
+
+    public SuspiciousAccountActivity getSuspiciousAccountActivity() {
+        return suspiciousAccountActivity;
+    }
+
+    public void setSuspiciousAccountActivity(
+            SuspiciousAccountActivity suspiciousAccountActivity) {
+        this.suspiciousAccountActivity = suspiciousAccountActivity;
     }
 
     public static class RapidWithdrawal {
@@ -244,6 +255,50 @@ public class FraudRuleProperties {
         private int baseline = 1;
         private int maxExpected = 7;
         private int maxScore = 45;
+
+        public long getWindowMinutes() {
+            return windowMinutes;
+        }
+
+        public void setWindowMinutes(
+                long windowMinutes) {
+            this.windowMinutes = windowMinutes;
+        }
+
+        public int getBaseline() {
+            return baseline;
+        }
+
+        public void setBaseline(
+                int baseline) {
+            this.baseline = baseline;
+        }
+
+        public int getMaxExpected() {
+            return maxExpected;
+        }
+
+        public void setMaxExpected(
+                int maxExpected) {
+            this.maxExpected = maxExpected;
+        }
+
+        public int getMaxScore() {
+            return maxScore;
+        }
+
+        public void setMaxScore(
+                int maxScore) {
+            this.maxScore = maxScore;
+        }
+    }
+
+    public static class SuspiciousAccountActivity {
+
+        private long windowMinutes = 10;
+        private int baseline = 2;
+        private int maxExpected = 8;
+        private int maxScore = 40;
 
         public long getWindowMinutes() {
             return windowMinutes;
