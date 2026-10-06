@@ -5,6 +5,8 @@ import com.veloop.rewards.withdrawal.enums.WithdrawalStatus;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 import java.time.LocalDateTime;
 import java.util.Optional;
@@ -40,4 +42,19 @@ public interface WithdrawalRepository
                         Long userId,
                         Long payoutOptionId,
                         LocalDateTime createdAt);
+
+        boolean existsByUserIdAndPayoutOptionIdAndCreatedAtAfter(
+                        Long userId,
+                        Long payoutOptionId,
+                        LocalDateTime createdAt);
+
+        @Query("""
+                        SELECT COUNT(DISTINCT w.payoutOption.id)
+                        FROM Withdrawal w
+                        WHERE w.user.id = :userId
+                          AND w.createdAt > :createdAt
+                        """)
+        long countDistinctPayoutOptionsByUserIdAndCreatedAtAfter(
+                        @Param("userId") Long userId,
+                        @Param("createdAt") LocalDateTime createdAt);
 }

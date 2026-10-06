@@ -19,6 +19,8 @@ public class FraudRuleProperties {
 
     private SuspiciousAccountActivity suspiciousAccountActivity = new SuspiciousAccountActivity();
 
+    private MultipleSuspiciousPayoutPattern multipleSuspiciousPayoutPattern = new MultipleSuspiciousPayoutPattern();
+
     public RapidWithdrawal getRapidWithdrawal() {
         return rapidWithdrawal;
     }
@@ -71,6 +73,15 @@ public class FraudRuleProperties {
     public void setSuspiciousAccountActivity(
             SuspiciousAccountActivity suspiciousAccountActivity) {
         this.suspiciousAccountActivity = suspiciousAccountActivity;
+    }
+
+    public MultipleSuspiciousPayoutPattern getMultipleSuspiciousPayoutPattern() {
+        return multipleSuspiciousPayoutPattern;
+    }
+
+    public void setMultipleSuspiciousPayoutPattern(
+            MultipleSuspiciousPayoutPattern multipleSuspiciousPayoutPattern) {
+        this.multipleSuspiciousPayoutPattern = multipleSuspiciousPayoutPattern;
     }
 
     public static class RapidWithdrawal {
@@ -333,6 +344,49 @@ public class FraudRuleProperties {
 
         public void setMaxScore(
                 int maxScore) {
+            this.maxScore = maxScore;
+        }
+    }
+
+    public static class MultipleSuspiciousPayoutPattern {
+
+        private long windowMinutes = 30;
+
+        private int baseline = 1;
+
+        private int maxExpected = 4;
+
+        private int maxScore = 40;
+
+        public long getWindowMinutes() {
+            return windowMinutes;
+        }
+
+        public void setWindowMinutes(long windowMinutes) {
+            this.windowMinutes = windowMinutes;
+        }
+
+        public int getBaseline() {
+            return baseline;
+        }
+
+        public void setBaseline(int baseline) {
+            this.baseline = baseline;
+        }
+
+        public int getMaxExpected() {
+            return maxExpected;
+        }
+
+        public void setMaxExpected(int maxExpected) {
+            this.maxExpected = maxExpected;
+        }
+
+        public int getMaxScore() {
+            return maxScore;
+        }
+
+        public void setMaxScore(int maxScore) {
             this.maxScore = maxScore;
         }
     }
