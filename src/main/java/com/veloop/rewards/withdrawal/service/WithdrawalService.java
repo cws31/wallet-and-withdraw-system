@@ -147,10 +147,10 @@ public class WithdrawalService {
                 BigDecimal payoutAmount = payoutOption.getPayoutAmount();
                 BigDecimal vesRequired = payoutOption.getCurrencyAmount();
                 LocalDateTime now = LocalDateTime.now();
-
                 FraudRiskEvaluation fraudEvaluation = fraudRiskService.evaluate(
                                 userId,
-                                now);
+                                now,
+                                payoutOption.getId());
 
                 if (fraudEvaluation.decision() == FraudRiskDecision.BLOCK) {
                         fraudRiskService.saveBlockedEvent(
