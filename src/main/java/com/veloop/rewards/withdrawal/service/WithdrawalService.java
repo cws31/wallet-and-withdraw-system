@@ -554,6 +554,111 @@ public class WithdrawalService {
         }
 
         @Transactional
+        public WithdrawalResponse rejectWithdrawalFromPayoutFailure(
+                        String withdrawalId,
+                        String failureReason) {
+
+                Withdrawal withdrawal = withdrawalRepository
+                                .findByWithdrawalId(withdrawalId)
+                                .orElseThrow(() -> new WithdrawalNotFoundException(
+                                                withdrawalId));
+
+                if (withdrawal.getStatus() != WithdrawalStatus.PENDING
+                                && withdrawal.getStatus() != WithdrawalStatus.PROCESSING) {
+
+                        throw new InvalidWithdrawalStateException(
+                                        "Only PENDING or PROCESSING withdrawals can be rejected by payout processing");
+                }
+
+                String cleanFailureReason = failureReason == null || failureReason.isBlank()
+                                ? "Payout provider rejected the withdrawal"
+                                : failureReason.trim();
+
+                WalletTransaction originalTransaction = withdrawal.getTransaction();
+
+                /*
+                 * Fraud-review withdrawals may not have a wallet
+                 * transaction yet. In that case there is nothing to
+                 * reverse.
+                 */
+                if (originalTransaction != null) {
+
+                        if (originalTransaction.getCurrency() != Currency.VES) {
+
+                                throw new WithdrawalTransactionException(
+                                                "Withdrawal transaction currency is not VES");
+                        }
+
+                        BigDecimal reversalAmount = originalTransaction.getAmount();
+
+                        String reversalReference = withdrawal.getWithdrawalId()
+                                        + "-REVERSAL";
+
+                        WalletCreditRequest reversalRequest = new WalletCreditRequest(
+                                        Currency.VES,
+                                        reversalAmount,
+                                        TransactionType.CORRECTION,
+                                        "WITHDRAWAL_REJECTED",
+                                        reversalReference,
+                                        "Withdrawal rejected - balance reversal",
+                                        null);
+
+                        walletService.creditWallet(
+                                        withdrawal.getUser().getId(),
+                                        reversalRequest);
+                }
+
+                WithdrawalStatus oldStatus = withdrawal.getStatus();
+
+                LocalDateTime now = LocalDateTime.now();
+
+                withdrawal.setStatus(
+                                WithdrawalStatus.REJECTED);
+
+                withdrawal.setRejectionReason(
+                                cleanFailureReason);
+
+                withdrawal.setReviewNote(
+                                "Payout processing failure");
+
+                withdrawal.setProcessedAt(now);
+
+                withdrawal.setUpdatedAt(now);
+
+                Withdrawal savedWithdrawal = withdrawalRepository.save(withdrawal);
+
+                /*
+                 * System-generated rejection.
+                 *
+                 * No admin user is supplied because this transition
+                 * is performed by the payout worker.
+                 */
+                withdrawalAuditService.record(
+                                savedWithdrawal,
+                                "REJECTED",
+                                oldStatus,
+                                WithdrawalStatus.REJECTED,
+                                null,
+                                "Payout processing rejected withdrawal: "
+                                                + cleanFailureReason);
+
+                auditLogService.record(
+                                null,
+                                savedWithdrawal.getUser(),
+                                "WITHDRAWAL",
+                                "WITHDRAWAL_REJECTED",
+                                savedWithdrawal.getWithdrawalId(),
+                                "oldStatus=" + oldStatus
+                                                + ", newStatus="
+                                                + WithdrawalStatus.REJECTED
+                                                + ", rejectionReason="
+                                                + cleanFailureReason
+                                                + ", source=PAYOUT_PROCESSING");
+
+                return toResponse(savedWithdrawal);
+        }
+
+        @Transactional
         public WithdrawalResponse cancelWithdrawal(
                         Long userId,
                         String withdrawalId) {
