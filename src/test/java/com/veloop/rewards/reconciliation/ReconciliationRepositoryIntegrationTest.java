@@ -24,195 +24,195 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 @Transactional
 class ReconciliationRepositoryIntegrationTest {
 
-    @Autowired
-    private WalletService walletService;
+        @Autowired
+        private WalletService walletService;
 
-    @Autowired
-    private WalletRepository walletRepository;
+        @Autowired
+        private WalletRepository walletRepository;
 
-    @Autowired
-    private WalletTransactionRepository walletTransactionRepository;
+        @Autowired
+        private WalletTransactionRepository walletTransactionRepository;
 
-    @Autowired
-    private UserRepository userRepository;
+        @Autowired
+        private UserRepository userRepository;
 
-    @Test
-    void shouldCalculateLedgerDerivedBalanceFromCompletedTransactions() {
+        @Test
+        void shouldCalculateLedgerDerivedBalanceFromCompletedTransactions() {
 
-        Long userId = createTestUserAndGetId();
+                Long userId = createTestUserAndGetId();
 
-        Wallet wallet = walletService.getWallet(userId);
+                Wallet wallet = walletService.getWallet(userId);
 
-        Long walletId = wallet.getId();
+                Long walletId = wallet.getId();
 
-        walletService.creditWallet(
-                userId,
-                new WalletCreditRequest(
-                        Currency.VES,
-                        new BigDecimal("5000"),
-                        TransactionType.REWARD,
-                        "TEST",
-                        "RECON-VES-CREDIT",
-                        "Reconciliation VES credit",
-                        null));
+                walletService.creditWallet(
+                                userId,
+                                new WalletCreditRequest(
+                                                Currency.VES,
+                                                new BigDecimal("5000"),
+                                                TransactionType.REWARD,
+                                                "TEST",
+                                                "RECON-VES-CREDIT",
+                                                "Reconciliation VES credit",
+                                                null));
 
-        walletService.debitWallet(
-                userId,
-                new WalletDebitRequest(
-                        Currency.VES,
-                        new BigDecimal("1000"),
-                        TransactionType.ADMIN_DEBIT,
-                        "TEST",
-                        "RECON-VES-DEBIT",
-                        "Reconciliation VES debit",
-                        null));
+                walletService.debitWallet(
+                                userId,
+                                new WalletDebitRequest(
+                                                Currency.VES,
+                                                new BigDecimal("1000"),
+                                                TransactionType.ADMIN_DEBIT,
+                                                "TEST",
+                                                "RECON-VES-DEBIT",
+                                                "Reconciliation VES debit",
+                                                null));
 
-        BigDecimal ledgerDerivedBalance = walletTransactionRepository
-                .sumBalanceDeltaByWalletIdAndCurrencyAndStatus(
-                        walletId,
-                        Currency.VES,
-                        TransactionStatus.COMPLETED);
+                BigDecimal ledgerDerivedBalance = walletTransactionRepository
+                                .sumBalanceDeltaByWalletIdAndCurrencyAndStatus(
+                                                walletId,
+                                                Currency.VES,
+                                                TransactionStatus.COMPLETED);
 
-        assertEquals(
-                0,
-                ledgerDerivedBalance.compareTo(
-                        new BigDecimal("4000")));
-    }
+                assertEquals(
+                                0,
+                                ledgerDerivedBalance.compareTo(
+                                                new BigDecimal("4000")));
+        }
 
-    @Test
-    void shouldKeepCurrenciesSeparatedDuringReconciliation() {
+        @Test
+        void shouldKeepCurrenciesSeparatedDuringReconciliation() {
 
-        Long userId = createTestUserAndGetId();
+                Long userId = createTestUserAndGetId();
 
-        Wallet wallet = walletService.getWallet(userId);
+                Wallet wallet = walletService.getWallet(userId);
 
-        Long walletId = wallet.getId();
+                Long walletId = wallet.getId();
 
-        walletService.creditWallet(
-                userId,
-                new WalletCreditRequest(
-                        Currency.VES,
-                        new BigDecimal("5000"),
-                        TransactionType.REWARD,
-                        "TEST",
-                        "RECON-ISOLATION-VES",
-                        "VES test credit",
-                        null));
+                walletService.creditWallet(
+                                userId,
+                                new WalletCreditRequest(
+                                                Currency.VES,
+                                                new BigDecimal("5000"),
+                                                TransactionType.REWARD,
+                                                "TEST",
+                                                "RECON-ISOLATION-VES",
+                                                "VES test credit",
+                                                null));
 
-        walletService.creditWallet(
-                userId,
-                new WalletCreditRequest(
-                        Currency.GEMS,
-                        new BigDecimal("250"),
-                        TransactionType.BONUS,
-                        "TEST",
-                        "RECON-ISOLATION-GEMS",
-                        "Gems test credit",
-                        null));
+                walletService.creditWallet(
+                                userId,
+                                new WalletCreditRequest(
+                                                Currency.GEMS,
+                                                new BigDecimal("250"),
+                                                TransactionType.BONUS,
+                                                "TEST",
+                                                "RECON-ISOLATION-GEMS",
+                                                "Gems test credit",
+                                                null));
 
-        BigDecimal vesLedgerBalance = walletTransactionRepository
-                .sumBalanceDeltaByWalletIdAndCurrencyAndStatus(
-                        walletId,
-                        Currency.VES,
-                        TransactionStatus.COMPLETED);
+                BigDecimal vesLedgerBalance = walletTransactionRepository
+                                .sumBalanceDeltaByWalletIdAndCurrencyAndStatus(
+                                                walletId,
+                                                Currency.VES,
+                                                TransactionStatus.COMPLETED);
 
-        BigDecimal gemsLedgerBalance = walletTransactionRepository
-                .sumBalanceDeltaByWalletIdAndCurrencyAndStatus(
-                        walletId,
-                        Currency.GEMS,
-                        TransactionStatus.COMPLETED);
+                BigDecimal gemsLedgerBalance = walletTransactionRepository
+                                .sumBalanceDeltaByWalletIdAndCurrencyAndStatus(
+                                                walletId,
+                                                Currency.GEMS,
+                                                TransactionStatus.COMPLETED);
 
-        assertEquals(
-                0,
-                vesLedgerBalance.compareTo(
-                        new BigDecimal("5000")));
+                assertEquals(
+                                0,
+                                vesLedgerBalance.compareTo(
+                                                new BigDecimal("5000")));
 
-        assertEquals(
-                0,
-                gemsLedgerBalance.compareTo(
-                        new BigDecimal("250")));
-    }
+                assertEquals(
+                                0,
+                                gemsLedgerBalance.compareTo(
+                                                new BigDecimal("250")));
+        }
 
-    @Test
-    void shouldIgnoreNonCompletedTransactions() {
+        @Test
+        void shouldIgnoreNonCompletedTransactions() {
 
-        Long userId = createTestUserAndGetId();
+                Long userId = createTestUserAndGetId();
 
-        Wallet wallet = walletService.getWallet(userId);
+                Wallet wallet = walletService.getWallet(userId);
 
-        Long walletId = wallet.getId();
+                Long walletId = wallet.getId();
 
-        walletService.creditWallet(
-                userId,
-                new WalletCreditRequest(
-                        Currency.VES,
-                        new BigDecimal("5000"),
-                        TransactionType.REWARD,
-                        "TEST",
-                        "RECON-COMPLETED",
-                        "Completed transaction",
-                        null));
+                walletService.creditWallet(
+                                userId,
+                                new WalletCreditRequest(
+                                                Currency.VES,
+                                                new BigDecimal("5000"),
+                                                TransactionType.REWARD,
+                                                "TEST",
+                                                "RECON-COMPLETED",
+                                                "Completed transaction",
+                                                null));
 
-        BigDecimal completedBalance = walletTransactionRepository
-                .sumBalanceDeltaByWalletIdAndCurrencyAndStatus(
-                        walletId,
-                        Currency.VES,
-                        TransactionStatus.COMPLETED);
+                BigDecimal completedBalance = walletTransactionRepository
+                                .sumBalanceDeltaByWalletIdAndCurrencyAndStatus(
+                                                walletId,
+                                                Currency.VES,
+                                                TransactionStatus.COMPLETED);
 
-        BigDecimal pendingBalance = walletTransactionRepository
-                .sumBalanceDeltaByWalletIdAndCurrencyAndStatus(
-                        walletId,
-                        Currency.VES,
-                        TransactionStatus.PENDING);
+                BigDecimal pendingBalance = walletTransactionRepository
+                                .sumBalanceDeltaByWalletIdAndCurrencyAndStatus(
+                                                walletId,
+                                                Currency.VES,
+                                                TransactionStatus.PENDING);
 
-        assertEquals(
-                0,
-                completedBalance.compareTo(
-                        new BigDecimal("5000")));
+                assertEquals(
+                                0,
+                                completedBalance.compareTo(
+                                                new BigDecimal("5000")));
 
-        assertEquals(
-                0,
-                pendingBalance.compareTo(
-                        BigDecimal.ZERO));
-    }
+                assertEquals(
+                                0,
+                                pendingBalance.compareTo(
+                                                BigDecimal.ZERO));
+        }
 
-    @Test
-    void shouldReturnZeroWhenNoCompletedTransactionsExist() {
+        @Test
+        void shouldReturnZeroWhenNoCompletedTransactionsExist() {
 
-        Long userId = createTestUserAndGetId();
+                Long userId = createTestUserAndGetId();
 
-        Wallet wallet = walletService.getWallet(userId);
+                Wallet wallet = walletService.getWallet(userId);
 
-        BigDecimal ledgerDerivedBalance = walletTransactionRepository
-                .sumBalanceDeltaByWalletIdAndCurrencyAndStatus(
-                        wallet.getId(),
-                        Currency.VES,
-                        TransactionStatus.COMPLETED);
+                BigDecimal ledgerDerivedBalance = walletTransactionRepository
+                                .sumBalanceDeltaByWalletIdAndCurrencyAndStatus(
+                                                wallet.getId(),
+                                                Currency.VES,
+                                                TransactionStatus.COMPLETED);
 
-        assertEquals(
-                0,
-                ledgerDerivedBalance.compareTo(
-                        BigDecimal.ZERO));
-    }
+                assertEquals(
+                                0,
+                                ledgerDerivedBalance.compareTo(
+                                                BigDecimal.ZERO));
+        }
 
-    private Long createTestUserAndGetId() {
+        private Long createTestUserAndGetId() {
 
-        String uniqueId = String.valueOf(System.nanoTime());
+                String uniqueId = String.valueOf(System.nanoTime());
 
-        User user = new User();
+                User user = new User();
 
-        user.setEmail(
-                "reconciliation-" + uniqueId + "@test.com");
+                user.setEmail(
+                                "reconciliation-" + uniqueId + "@test.com");
 
-        user.setPasswordHash("test-password");
+                user.setPasswordHash("test-password");
 
-        user.setName("Reconciliation Test User");
+                user.setName("Reconciliation Test User");
 
-        User savedUser = userRepository.save(user);
+                User savedUser = userRepository.save(user);
 
-        walletService.createWallet(
-                savedUser.getId());
+                walletService.createWallet(
+                                savedUser.getId());
 
-        return savedUser.getId();
-    }
+                return savedUser.getId();
+        }
 }

@@ -1,10 +1,6 @@
 package com.veloop.rewards.withdrawal.service;
 
 import com.veloop.rewards.audit.service.AuditLogService;
-import com.veloop.rewards.fraud.enums.FraudRiskDecision;
-import com.veloop.rewards.fraud.exception.FraudRiskBlockedException;
-import com.veloop.rewards.fraud.service.FraudRiskEvaluation;
-import com.veloop.rewards.fraud.service.FraudRiskService;
 import com.veloop.rewards.audit.service.WithdrawalAuditService;
 import com.veloop.rewards.common.exception.InvalidWithdrawalRequestException;
 import com.veloop.rewards.common.exception.InvalidWithdrawalStateException;
@@ -13,8 +9,13 @@ import com.veloop.rewards.common.exception.WithdrawalNotFoundException;
 import com.veloop.rewards.common.exception.WithdrawalOwnershipException;
 import com.veloop.rewards.common.exception.WithdrawalTransactionException;
 import com.veloop.rewards.common.response.PageResponse;
+import com.veloop.rewards.fraud.enums.FraudRiskDecision;
+import com.veloop.rewards.fraud.exception.FraudRiskBlockedException;
+import com.veloop.rewards.fraud.service.FraudRiskEvaluation;
+import com.veloop.rewards.fraud.service.FraudRiskService;
 import com.veloop.rewards.idempotency.entity.WithdrawalIdempotency;
 import com.veloop.rewards.idempotency.service.WithdrawalIdempotencyService;
+import com.veloop.rewards.observability.ObservabilityMetrics;
 import com.veloop.rewards.payout.entity.PayoutMethod;
 import com.veloop.rewards.payout.entity.PayoutOption;
 import com.veloop.rewards.payout.repository.PayoutMethodRepository;
@@ -30,11 +31,14 @@ import com.veloop.rewards.wallet.enums.Currency;
 import com.veloop.rewards.wallet.enums.TransactionType;
 import com.veloop.rewards.wallet.repository.WalletTransactionRepository;
 import com.veloop.rewards.wallet.service.WalletService;
+
 import com.veloop.rewards.withdrawal.dto.WithdrawalCreateRequest;
 import com.veloop.rewards.withdrawal.dto.WithdrawalResponse;
 import com.veloop.rewards.withdrawal.entity.Withdrawal;
+
 import com.veloop.rewards.withdrawal.enums.WithdrawalStatus;
 import com.veloop.rewards.withdrawal.repository.WithdrawalRepository;
+
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -60,6 +64,7 @@ public class WithdrawalService {
         private final AuditLogService auditLogService;
         private final WithdrawalEligibilityService withdrawalEligibilityService;
         private final FraudRiskService fraudRiskService;
+        private final ObservabilityMetrics observabilityMetrics;
 
         public WithdrawalService(
                         WithdrawalRepository withdrawalRepository,
@@ -74,7 +79,8 @@ public class WithdrawalService {
                         AuditLogService auditLogService,
                         WithdrawalEligibilityService withdrawalEligibilityService,
                         PayoutOptionValidator payoutOptionValidator,
-                        FraudRiskService fraudRiskService) {
+                        FraudRiskService fraudRiskService,
+                        ObservabilityMetrics observabilityMetrics) {
 
                 this.withdrawalRepository = withdrawalRepository;
                 this.withdrawalIdempotencyService = withdrawalIdempotencyService;
@@ -89,6 +95,7 @@ public class WithdrawalService {
                 this.withdrawalEligibilityService = withdrawalEligibilityService;
                 this.payoutOptionValidator = payoutOptionValidator;
                 this.fraudRiskService = fraudRiskService;
+                this.observabilityMetrics = observabilityMetrics;
         }
 
         @Transactional
@@ -147,12 +154,14 @@ public class WithdrawalService {
                 BigDecimal payoutAmount = payoutOption.getPayoutAmount();
                 BigDecimal vesRequired = payoutOption.getCurrencyAmount();
                 LocalDateTime now = LocalDateTime.now();
+
                 FraudRiskEvaluation fraudEvaluation = fraudRiskService.evaluate(
                                 userId,
                                 now,
                                 payoutOption.getId());
 
                 if (fraudEvaluation.decision() == FraudRiskDecision.BLOCK) {
+
                         fraudRiskService.saveBlockedEvent(
                                         userId,
                                         fraudEvaluation);
@@ -163,6 +172,7 @@ public class WithdrawalService {
                 }
 
                 String withdrawalId = "WD-" + UUID.randomUUID();
+
                 Withdrawal withdrawal = new Withdrawal();
 
                 withdrawal.setWithdrawalId(withdrawalId);
@@ -179,6 +189,7 @@ public class WithdrawalService {
                 withdrawal.setUpdatedAt(now);
 
                 if (fraudEvaluation.decision() == FraudRiskDecision.REVIEW) {
+
                         withdrawal.setReviewNote(
                                         "Fraud review required. Risk score: "
                                                         + fraudEvaluation.totalRiskScore());
@@ -212,6 +223,8 @@ public class WithdrawalService {
                                         normalizedIdempotencyKey,
                                         requestFingerprint,
                                         savedWithdrawal);
+
+                        observabilityMetrics.recordWithdrawalCreated();
 
                         return toResponse(savedWithdrawal);
                 }
@@ -274,6 +287,8 @@ public class WithdrawalService {
                                 normalizedIdempotencyKey,
                                 requestFingerprint,
                                 savedWithdrawal);
+
+                observabilityMetrics.recordWithdrawalCreated();
 
                 return toResponse(savedWithdrawal);
         }
@@ -363,6 +378,8 @@ public class WithdrawalService {
                                                 + ", newStatus="
                                                 + WithdrawalStatus.PROCESSING);
 
+                observabilityMetrics.recordWithdrawalProcessing();
+
                 return toResponse(savedWithdrawal);
         }
 
@@ -388,6 +405,7 @@ public class WithdrawalService {
                                                 "Admin user not found"));
 
                 if (withdrawal.getTransaction() == null) {
+
                         String approvedWithdrawalId = withdrawal.getWithdrawalId();
 
                         WalletDebitRequest debitRequest = new WalletDebitRequest(
@@ -441,6 +459,8 @@ public class WithdrawalService {
                                                 + ", newStatus="
                                                 + WithdrawalStatus.APPROVED);
 
+                observabilityMetrics.recordWithdrawalApproved();
+
                 return toResponse(savedWithdrawal);
         }
 
@@ -490,7 +510,6 @@ public class WithdrawalService {
                 BigDecimal reversalAmount = originalTransaction.getAmount();
 
                 if (originalTransaction.getCurrency() != Currency.VES) {
-
                         throw new WithdrawalTransactionException(
                                         "Withdrawal transaction currency is not VES");
                 }
@@ -550,6 +569,8 @@ public class WithdrawalService {
                                                 + ", rejectionReason="
                                                 + cleanRejectionReason);
 
+                observabilityMetrics.recordWithdrawalRejected();
+
                 return toResponse(savedWithdrawal);
         }
 
@@ -570,17 +591,13 @@ public class WithdrawalService {
                                         "Only PENDING or PROCESSING withdrawals can be rejected by payout processing");
                 }
 
-                String cleanFailureReason = failureReason == null || failureReason.isBlank()
-                                ? "Payout provider rejected the withdrawal"
-                                : failureReason.trim();
+                String cleanFailureReason = failureReason == null
+                                || failureReason.isBlank()
+                                                ? "Payout provider rejected the withdrawal"
+                                                : failureReason.trim();
 
                 WalletTransaction originalTransaction = withdrawal.getTransaction();
 
-                /*
-                 * Fraud-review withdrawals may not have a wallet
-                 * transaction yet. In that case there is nothing to
-                 * reverse.
-                 */
                 if (originalTransaction != null) {
 
                         if (originalTransaction.getCurrency() != Currency.VES) {
@@ -627,12 +644,6 @@ public class WithdrawalService {
 
                 Withdrawal savedWithdrawal = withdrawalRepository.save(withdrawal);
 
-                /*
-                 * System-generated rejection.
-                 *
-                 * No admin user is supplied because this transition
-                 * is performed by the payout worker.
-                 */
                 withdrawalAuditService.record(
                                 savedWithdrawal,
                                 "REJECTED",
@@ -654,6 +665,8 @@ public class WithdrawalService {
                                                 + ", rejectionReason="
                                                 + cleanFailureReason
                                                 + ", source=PAYOUT_PROCESSING");
+
+                observabilityMetrics.recordWithdrawalRejected();
 
                 return toResponse(savedWithdrawal);
         }
@@ -681,6 +694,7 @@ public class WithdrawalService {
                 WalletTransaction originalTransaction = withdrawal.getTransaction();
 
                 if (originalTransaction == null) {
+
                         WithdrawalStatus oldStatus = withdrawal.getStatus();
                         LocalDateTime now = LocalDateTime.now();
 
@@ -706,6 +720,8 @@ public class WithdrawalService {
                                         savedWithdrawal.getWithdrawalId(),
                                         "oldStatus=" + oldStatus
                                                         + ", newStatus=" + WithdrawalStatus.CANCELLED);
+
+                        observabilityMetrics.recordWithdrawalCancelled();
 
                         return toResponse(savedWithdrawal);
                 }
@@ -763,6 +779,8 @@ public class WithdrawalService {
                                 "oldStatus=" + oldStatus
                                                 + ", newStatus="
                                                 + WithdrawalStatus.CANCELLED);
+
+                observabilityMetrics.recordWithdrawalCancelled();
 
                 return toResponse(savedWithdrawal);
         }

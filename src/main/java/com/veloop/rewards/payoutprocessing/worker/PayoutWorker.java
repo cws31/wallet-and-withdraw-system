@@ -2,6 +2,7 @@ package com.veloop.rewards.payoutprocessing.worker;
 
 import com.veloop.rewards.audit.service.AuditLogService;
 import com.veloop.rewards.audit.service.WithdrawalAuditService;
+import com.veloop.rewards.observability.ObservabilityMetrics;
 import com.veloop.rewards.payoutprocessing.entity.PayoutJob;
 import com.veloop.rewards.payoutprocessing.enums.PayoutJobStatus;
 import com.veloop.rewards.payoutprocessing.provider.PayoutProvider;
@@ -15,7 +16,6 @@ import com.veloop.rewards.withdrawal.entity.Withdrawal;
 import com.veloop.rewards.withdrawal.enums.WithdrawalStatus;
 import com.veloop.rewards.withdrawal.repository.WithdrawalRepository;
 import com.veloop.rewards.withdrawal.service.WithdrawalService;
-
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -31,6 +31,7 @@ public class PayoutWorker {
         private final WithdrawalService withdrawalService;
         private final WithdrawalAuditService withdrawalAuditService;
         private final AuditLogService auditLogService;
+        private final ObservabilityMetrics observabilityMetrics;
 
         public PayoutWorker(
                         PayoutJobRepository payoutJobRepository,
@@ -39,7 +40,8 @@ public class PayoutWorker {
                         PayoutRetryPolicy payoutRetryPolicy,
                         WithdrawalService withdrawalService,
                         WithdrawalAuditService withdrawalAuditService,
-                        AuditLogService auditLogService) {
+                        AuditLogService auditLogService,
+                        ObservabilityMetrics observabilityMetrics) {
 
                 this.payoutJobRepository = payoutJobRepository;
                 this.withdrawalRepository = withdrawalRepository;
@@ -48,6 +50,7 @@ public class PayoutWorker {
                 this.withdrawalService = withdrawalService;
                 this.withdrawalAuditService = withdrawalAuditService;
                 this.auditLogService = auditLogService;
+                this.observabilityMetrics = observabilityMetrics;
         }
 
         @Transactional
@@ -95,6 +98,8 @@ public class PayoutWorker {
                                         "oldStatus=" + oldStatus
                                                         + ", newStatus=" + WithdrawalStatus.PROCESSING
                                                         + ", source=PAYOUT_PROCESSING");
+
+                        observabilityMetrics.recordWithdrawalProcessing();
                 }
 
                 job.setStatus(PayoutJobStatus.PROCESSING);
@@ -163,6 +168,8 @@ public class PayoutWorker {
                                                         + ", source=PAYOUT_PROCESSING"
                                                         + ", providerReference="
                                                         + result.providerReference());
+
+                        observabilityMetrics.recordWithdrawalApproved();
 
                         job.setStatus(PayoutJobStatus.COMPLETED);
                         job.setLastError(null);

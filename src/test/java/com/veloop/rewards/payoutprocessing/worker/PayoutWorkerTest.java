@@ -1,7 +1,9 @@
+
 package com.veloop.rewards.payoutprocessing.worker;
 
 import com.veloop.rewards.audit.service.AuditLogService;
 import com.veloop.rewards.audit.service.WithdrawalAuditService;
+import com.veloop.rewards.observability.ObservabilityMetrics;
 import com.veloop.rewards.payout.entity.PayoutMethod;
 import com.veloop.rewards.payoutprocessing.entity.PayoutJob;
 import com.veloop.rewards.payoutprocessing.enums.PayoutJobStatus;
@@ -13,11 +15,11 @@ import com.veloop.rewards.payoutprocessing.provider.PayoutProviderResult;
 import com.veloop.rewards.payoutprocessing.provider.PayoutProviderStatus;
 import com.veloop.rewards.payoutprocessing.repository.PayoutJobRepository;
 import com.veloop.rewards.payoutprocessing.retry.PayoutRetryPolicy;
+
 import com.veloop.rewards.withdrawal.entity.Withdrawal;
 import com.veloop.rewards.withdrawal.enums.WithdrawalStatus;
 import com.veloop.rewards.withdrawal.repository.WithdrawalRepository;
 import com.veloop.rewards.withdrawal.service.WithdrawalService;
-
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -25,19 +27,9 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.Optional;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
+import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
-
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyNoInteractions;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.*;
 
 class PayoutWorkerTest {
 
@@ -48,6 +40,7 @@ class PayoutWorkerTest {
         private WithdrawalService withdrawalService;
         private WithdrawalAuditService withdrawalAuditService;
         private AuditLogService auditLogService;
+        private ObservabilityMetrics observabilityMetrics;
         private PayoutWorker payoutWorker;
 
         @BeforeEach
@@ -67,6 +60,8 @@ class PayoutWorkerTest {
 
                 auditLogService = mock(AuditLogService.class);
 
+                observabilityMetrics = mock(ObservabilityMetrics.class);
+
                 when(withdrawalRepository.save(any(Withdrawal.class)))
                                 .thenAnswer(invocation -> invocation.getArgument(0));
 
@@ -77,7 +72,8 @@ class PayoutWorkerTest {
                                 payoutRetryPolicy,
                                 withdrawalService,
                                 withdrawalAuditService,
-                                auditLogService);
+                                auditLogService,
+                                observabilityMetrics);
         }
 
         @Test
@@ -153,6 +149,12 @@ class PayoutWorkerTest {
                                                 WithdrawalStatus.APPROVED,
                                                 null,
                                                 "Withdrawal approved by payout worker");
+
+                verify(observabilityMetrics)
+                                .recordWithdrawalProcessing();
+
+                verify(observabilityMetrics)
+                                .recordWithdrawalApproved();
 
                 verify(auditLogService)
                                 .record(
@@ -239,6 +241,9 @@ class PayoutWorkerTest {
 
                 verifyNoInteractions(
                                 auditLogService);
+
+                verifyNoInteractions(
+                                observabilityMetrics);
         }
 
         @Test
@@ -275,6 +280,9 @@ class PayoutWorkerTest {
 
                 verifyNoInteractions(
                                 auditLogService);
+
+                verifyNoInteractions(
+                                observabilityMetrics);
         }
 
         @Test
@@ -343,6 +351,12 @@ class PayoutWorkerTest {
                                                 WithdrawalStatus.PROCESSING,
                                                 null,
                                                 "Withdrawal moved to processing by payout worker");
+
+                verify(observabilityMetrics)
+                                .recordWithdrawalProcessing();
+
+                verifyNoMoreInteractions(
+                                observabilityMetrics);
 
                 verify(auditLogService)
                                 .record(
@@ -437,6 +451,12 @@ class PayoutWorkerTest {
                                                 null,
                                                 "Withdrawal moved to processing by payout worker");
 
+                verify(observabilityMetrics)
+                                .recordWithdrawalProcessing();
+
+                verifyNoMoreInteractions(
+                                observabilityMetrics);
+
                 verify(auditLogService)
                                 .record(
                                                 any(),
@@ -482,6 +502,9 @@ class PayoutWorkerTest {
 
                 verifyNoInteractions(
                                 auditLogService);
+
+                verifyNoInteractions(
+                                observabilityMetrics);
         }
 
         @Test
@@ -551,6 +574,12 @@ class PayoutWorkerTest {
                                                 WithdrawalStatus.APPROVED,
                                                 null,
                                                 "Withdrawal approved by payout worker");
+
+                verify(observabilityMetrics)
+                                .recordWithdrawalApproved();
+
+                verifyNoMoreInteractions(
+                                observabilityMetrics);
 
                 verify(auditLogService)
                                 .record(
@@ -641,6 +670,9 @@ class PayoutWorkerTest {
                 verifyNoInteractions(
                                 withdrawalAuditService);
 
+                verifyNoInteractions(
+                                observabilityMetrics);
+
                 verify(auditLogService)
                                 .record(
                                                 any(),
@@ -685,6 +717,9 @@ class PayoutWorkerTest {
 
                 verifyNoInteractions(
                                 auditLogService);
+
+                verifyNoInteractions(
+                                observabilityMetrics);
         }
 
         private PayoutJob createJob(

@@ -1,5 +1,6 @@
 package com.veloop.rewards.security.ratelimit;
 
+import com.veloop.rewards.observability.ObservabilityMetrics;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -10,244 +11,266 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
 
 class RateLimitDistributedIntegrationTest {
 
-    private static LettuceConnectionFactory connectionFactory;
-    private static StringRedisTemplate redisTemplate;
+        private static LettuceConnectionFactory connectionFactory;
+        private static StringRedisTemplate redisTemplate;
 
-    private RateLimitProperties properties;
+        private RateLimitProperties properties;
+        private ObservabilityMetrics observabilityMetrics;
 
-    @BeforeAll
-    static void startRedisConnection() {
+        @BeforeAll
+        static void startRedisConnection() {
 
-        connectionFactory = new LettuceConnectionFactory(
-                "localhost",
-                6379);
+                connectionFactory = new LettuceConnectionFactory(
+                                "localhost",
+                                6379);
 
-        connectionFactory.afterPropertiesSet();
+                connectionFactory.afterPropertiesSet();
 
-        redisTemplate = new StringRedisTemplate(
-                connectionFactory);
+                redisTemplate = new StringRedisTemplate(
+                                connectionFactory);
 
-        redisTemplate.afterPropertiesSet();
-    }
-
-    @AfterAll
-    static void closeRedisConnection() {
-
-        if (connectionFactory != null) {
-            connectionFactory.destroy();
+                redisTemplate.afterPropertiesSet();
         }
-    }
 
-    @BeforeEach
-    void setUp() {
+        @AfterAll
+        static void closeRedisConnection() {
 
-        properties = new RateLimitProperties();
-
-        properties.setEnabled(true);
-        properties.setMaxEntries(10_000);
-    }
-
-    @Test
-    void shouldShareRateLimitStateAcrossServiceInstances() {
-
-        String key = "distributed-test-" +
-                UUID.randomUUID();
-
-        RateLimitService instanceOne = new RateLimitService(
-                properties,
-                redisTemplate);
-
-        RateLimitService instanceTwo = new RateLimitService(
-                properties,
-                redisTemplate);
-
-        try {
-
-            RateLimitDecision firstRequest = instanceOne.check(
-                    key,
-                    2,
-                    60);
-
-            RateLimitDecision secondRequest = instanceTwo.check(
-                    key,
-                    2,
-                    60);
-
-            RateLimitDecision thirdRequest = instanceOne.check(
-                    key,
-                    2,
-                    60);
-
-            assertTrue(
-                    firstRequest.allowed());
-
-            assertTrue(
-                    secondRequest.allowed());
-
-            assertFalse(
-                    thirdRequest.allowed());
-
-            assertTrue(
-                    thirdRequest.retryAfterSeconds() > 0);
-
-        } finally {
-
-            redisTemplate.delete(
-                    "veloop:ratelimit:" + key);
+                if (connectionFactory != null) {
+                        connectionFactory.destroy();
+                }
         }
-    }
 
-    @Test
-    void shouldUseSeparateRedisCountersForDifferentUsers() {
+        @BeforeEach
+        void setUp() {
 
-        String userOneKey = "user-one-" +
-                UUID.randomUUID();
+                properties = new RateLimitProperties();
 
-        String userTwoKey = "user-two-" +
-                UUID.randomUUID();
+                properties.setEnabled(true);
+                properties.setMaxEntries(10_000);
 
-        RateLimitService instanceOne = new RateLimitService(
-                properties,
-                redisTemplate);
-
-        RateLimitService instanceTwo = new RateLimitService(
-                properties,
-                redisTemplate);
-
-        try {
-
-            for (int i = 0; i < 2; i++) {
-
-                RateLimitDecision decision = instanceOne.check(
-                        userOneKey,
-                        2,
-                        60);
-
-                assertTrue(
-                        decision.allowed());
-            }
-
-            RateLimitDecision userOneThirdRequest = instanceTwo.check(
-                    userOneKey,
-                    2,
-                    60);
-
-            RateLimitDecision userTwoFirstRequest = instanceTwo.check(
-                    userTwoKey,
-                    2,
-                    60);
-
-            assertFalse(
-                    userOneThirdRequest.allowed());
-
-            assertTrue(
-                    userTwoFirstRequest.allowed());
-
-        } finally {
-
-            redisTemplate.delete(
-                    "veloop:ratelimit:" + userOneKey);
-
-            redisTemplate.delete(
-                    "veloop:ratelimit:" + userTwoKey);
+                observabilityMetrics = mock(ObservabilityMetrics.class);
         }
-    }
 
-    @Test
-    void shouldCreateRedisCounterWithExpiry() {
+        @Test
+        void shouldShareRateLimitStateAcrossServiceInstances() {
 
-        String key = "expiry-test-" +
-                UUID.randomUUID();
+                String key = "distributed-test-" +
+                                UUID.randomUUID();
 
-        RateLimitService rateLimitService = new RateLimitService(
-                properties,
-                redisTemplate);
+                RateLimitService instanceOne = new RateLimitService(
+                                properties,
+                                redisTemplate,
+                                observabilityMetrics);
 
-        String redisKey = "veloop:ratelimit:" + key;
+                RateLimitService instanceTwo = new RateLimitService(
+                                properties,
+                                redisTemplate,
+                                observabilityMetrics);
 
-        try {
+                try {
 
-            RateLimitDecision decision = rateLimitService.check(
-                    key,
-                    5,
-                    60);
+                        RateLimitDecision firstRequest = instanceOne.check(
+                                        key,
+                                        2,
+                                        60);
 
-            assertTrue(
-                    decision.allowed());
+                        RateLimitDecision secondRequest = instanceTwo.check(
+                                        key,
+                                        2,
+                                        60);
 
-            String storedValue = redisTemplate.opsForValue()
-                    .get(redisKey);
+                        RateLimitDecision thirdRequest = instanceOne.check(
+                                        key,
+                                        2,
+                                        60);
 
-            assertEquals(
-                    "1",
-                    storedValue);
+                        assertTrue(
+                                        firstRequest.allowed());
 
-            Long ttl = redisTemplate.getExpire(
-                    redisKey);
+                        assertTrue(
+                                        secondRequest.allowed());
 
-            assertNotNull(ttl);
+                        assertFalse(
+                                        thirdRequest.allowed());
 
-            assertTrue(
-                    ttl > 0);
+                        assertTrue(
+                                        thirdRequest.retryAfterSeconds() > 0);
 
-            assertTrue(
-                    ttl <= 60);
+                        verify(observabilityMetrics)
+                                        .recordRateLimitBlocked();
 
-        } finally {
+                } finally {
 
-            redisTemplate.delete(
-                    redisKey);
+                        redisTemplate.delete(
+                                        "veloop:ratelimit:" + key);
+                }
         }
-    }
 
-    @Test
-    void shouldReturnRetryAfterFromRedisTtl() {
+        @Test
+        void shouldUseSeparateRedisCountersForDifferentUsers() {
 
-        String key = "retry-test-" +
-                UUID.randomUUID();
+                String userOneKey = "user-one-" +
+                                UUID.randomUUID();
 
-        RateLimitService rateLimitService = new RateLimitService(
-                properties,
-                redisTemplate);
+                String userTwoKey = "user-two-" +
+                                UUID.randomUUID();
 
-        String redisKey = "veloop:ratelimit:" + key;
+                RateLimitService instanceOne = new RateLimitService(
+                                properties,
+                                redisTemplate,
+                                observabilityMetrics);
 
-        try {
+                RateLimitService instanceTwo = new RateLimitService(
+                                properties,
+                                redisTemplate,
+                                observabilityMetrics);
 
-            rateLimitService.check(
-                    key,
-                    1,
-                    60);
+                try {
 
-            RateLimitDecision rejected = rateLimitService.check(
-                    key,
-                    1,
-                    60);
+                        for (int i = 0; i < 2; i++) {
 
-            assertFalse(
-                    rejected.allowed());
+                                RateLimitDecision decision = instanceOne.check(
+                                                userOneKey,
+                                                2,
+                                                60);
 
-            assertTrue(
-                    rejected.retryAfterSeconds() >= 1);
+                                assertTrue(
+                                                decision.allowed());
+                        }
 
-            Long redisTtl = redisTemplate.getExpire(
-                    redisKey);
+                        RateLimitDecision userOneThirdRequest = instanceTwo.check(
+                                        userOneKey,
+                                        2,
+                                        60);
 
-            assertNotNull(redisTtl);
+                        RateLimitDecision userTwoFirstRequest = instanceTwo.check(
+                                        userTwoKey,
+                                        2,
+                                        60);
 
-            assertTrue(
-                    redisTtl >= 1);
+                        assertFalse(
+                                        userOneThirdRequest.allowed());
 
-            assertTrue(
-                    rejected.retryAfterSeconds() <= redisTtl + 1);
+                        assertTrue(
+                                        userTwoFirstRequest.allowed());
 
-        } finally {
+                        verify(observabilityMetrics)
+                                        .recordRateLimitBlocked();
 
-            redisTemplate.delete(
-                    redisKey);
+                } finally {
+
+                        redisTemplate.delete(
+                                        "veloop:ratelimit:" + userOneKey);
+
+                        redisTemplate.delete(
+                                        "veloop:ratelimit:" + userTwoKey);
+                }
         }
-    }
+
+        @Test
+        void shouldCreateRedisCounterWithExpiry() {
+
+                String key = "expiry-test-" +
+                                UUID.randomUUID();
+
+                RateLimitService rateLimitService = new RateLimitService(
+                                properties,
+                                redisTemplate,
+                                observabilityMetrics);
+
+                String redisKey = "veloop:ratelimit:" + key;
+
+                try {
+
+                        RateLimitDecision decision = rateLimitService.check(
+                                        key,
+                                        5,
+                                        60);
+
+                        assertTrue(
+                                        decision.allowed());
+
+                        String storedValue = redisTemplate.opsForValue()
+                                        .get(redisKey);
+
+                        assertEquals(
+                                        "1",
+                                        storedValue);
+
+                        Long ttl = redisTemplate.getExpire(
+                                        redisKey);
+
+                        assertNotNull(ttl);
+
+                        assertTrue(
+                                        ttl > 0);
+
+                        assertTrue(
+                                        ttl <= 60);
+
+                        verifyNoInteractions(
+                                        observabilityMetrics);
+
+                } finally {
+
+                        redisTemplate.delete(
+                                        redisKey);
+                }
+        }
+
+        @Test
+        void shouldReturnRetryAfterFromRedisTtl() {
+
+                String key = "retry-test-" +
+                                UUID.randomUUID();
+
+                RateLimitService rateLimitService = new RateLimitService(
+                                properties,
+                                redisTemplate,
+                                observabilityMetrics);
+
+                String redisKey = "veloop:ratelimit:" + key;
+
+                try {
+
+                        rateLimitService.check(
+                                        key,
+                                        1,
+                                        60);
+
+                        RateLimitDecision rejected = rateLimitService.check(
+                                        key,
+                                        1,
+                                        60);
+
+                        assertFalse(
+                                        rejected.allowed());
+
+                        assertTrue(
+                                        rejected.retryAfterSeconds() >= 1);
+
+                        Long redisTtl = redisTemplate.getExpire(
+                                        redisKey);
+
+                        assertNotNull(redisTtl);
+
+                        assertTrue(
+                                        redisTtl >= 1);
+
+                        assertTrue(
+                                        rejected.retryAfterSeconds() <= redisTtl + 1);
+
+                        verify(observabilityMetrics)
+                                        .recordRateLimitBlocked();
+
+                } finally {
+
+                        redisTemplate.delete(
+                                        redisKey);
+                }
+        }
 }

@@ -1,5 +1,6 @@
 package com.veloop.rewards.security.ratelimit;
 
+import com.veloop.rewards.observability.ObservabilityMetrics;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.stereotype.Service;
@@ -25,15 +26,17 @@ public class RateLimitService {
             String.class);
 
     private final RateLimitProperties properties;
-
     private final StringRedisTemplate redisTemplate;
+    private final ObservabilityMetrics observabilityMetrics;
 
     public RateLimitService(
             RateLimitProperties properties,
-            StringRedisTemplate redisTemplate) {
+            StringRedisTemplate redisTemplate,
+            ObservabilityMetrics observabilityMetrics) {
 
         this.properties = properties;
         this.redisTemplate = redisTemplate;
+        this.observabilityMetrics = observabilityMetrics;
     }
 
     public RateLimitDecision check(
@@ -81,6 +84,8 @@ public class RateLimitService {
             }
 
             long retryAfterSeconds = normalizeRetryAfter(ttl);
+
+            observabilityMetrics.recordRateLimitBlocked();
 
             return RateLimitDecision.reject(
                     retryAfterSeconds);

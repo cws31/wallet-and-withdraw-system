@@ -1,20 +1,30 @@
 package com.veloop.rewards.common.exception;
 
-import org.springframework.dao.OptimisticLockingFailureException;
 import com.veloop.rewards.common.response.ErrorResponse;
+import com.veloop.rewards.observability.ObservabilityMetrics;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.authorization.AuthorizationDeniedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
-import org.springframework.security.authorization.AuthorizationDeniedException;
+
 import java.util.LinkedHashMap;
 import java.util.Map;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+
+        private final ObservabilityMetrics observabilityMetrics;
+
+        public GlobalExceptionHandler(
+                        ObservabilityMetrics observabilityMetrics) {
+
+                this.observabilityMetrics = observabilityMetrics;
+        }
 
         @ExceptionHandler(AuthenticationFailedException.class)
         public ResponseEntity<ErrorResponse> handleAuthenticationFailed(
@@ -154,6 +164,8 @@ public class GlobalExceptionHandler {
         public ResponseEntity<ErrorResponse> handleUnexpectedException(
                         Exception ex,
                         HttpServletRequest request) {
+
+                observabilityMetrics.recordApplicationError();
 
                 return ResponseEntity
                                 .status(HttpStatus.INTERNAL_SERVER_ERROR)

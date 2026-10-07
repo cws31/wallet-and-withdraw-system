@@ -24,148 +24,148 @@ import static org.junit.jupiter.api.Assertions.*;
 @Transactional
 class ReconciliationAuditIntegrationTest {
 
-    @Autowired
-    private ReconciliationService reconciliationService;
+        @Autowired
+        private ReconciliationService reconciliationService;
 
-    @Autowired
-    private AuditLogRepository auditLogRepository;
+        @Autowired
+        private AuditLogRepository auditLogRepository;
 
-    @Autowired
-    private UserRepository userRepository;
+        @Autowired
+        private UserRepository userRepository;
 
-    @Autowired
-    private WalletRepository walletRepository;
+        @Autowired
+        private WalletRepository walletRepository;
 
-    @Autowired
-    private WalletService walletService;
+        @Autowired
+        private WalletService walletService;
 
-    private User user;
-    private Wallet wallet;
+        private User user;
+        private Wallet wallet;
 
-    @BeforeEach
-    void setUp() {
+        @BeforeEach
+        void setUp() {
 
-        user = User.builder()
-                .name("Reconciliation Audit User")
-                .email(
-                        "reconciliation-audit-"
-                                + System.nanoTime()
-                                + "@example.com")
-                .passwordHash("test-password")
-                .role("USER")
-                .accountStatus("ACTIVE")
-                .verified(false)
-                .level(0)
-                .build();
+                user = User.builder()
+                                .name("Reconciliation Audit User")
+                                .email(
+                                                "reconciliation-audit-"
+                                                                + System.nanoTime()
+                                                                + "@example.com")
+                                .passwordHash("test-password")
+                                .role("USER")
+                                .accountStatus("ACTIVE")
+                                .verified(false)
+                                .level(0)
+                                .build();
 
-        user = userRepository.saveAndFlush(user);
+                user = userRepository.saveAndFlush(user);
 
-        wallet = walletService.createWallet(user.getId());
+                wallet = walletService.createWallet(user.getId());
 
-        auditLogRepository.deleteAll();
-        auditLogRepository.flush();
-    }
+                auditLogRepository.deleteAll();
+                auditLogRepository.flush();
+        }
 
-    @Test
-    void shouldPersistAuditRecordWhenReconciliationFails() {
+        @Test
+        void shouldPersistAuditRecordWhenReconciliationFails() {
 
-        wallet.setVes(
-                new BigDecimal("1000"));
+                wallet.setVes(
+                                new BigDecimal("1000"));
 
-        wallet = walletRepository.saveAndFlush(wallet);
+                wallet = walletRepository.saveAndFlush(wallet);
 
-        var result = reconciliationService.reconcile(
-                wallet.getId(),
-                Currency.VES);
+                var result = reconciliationService.reconcile(
+                                wallet.getId(),
+                                Currency.VES);
 
-        assertFalse(result.reconciled());
+                assertFalse(result.reconciled());
 
-        assertEquals(
-                0,
-                result.ledgerDerivedBalance()
-                        .compareTo(BigDecimal.ZERO));
+                assertEquals(
+                                0,
+                                result.ledgerDerivedBalance()
+                                                .compareTo(BigDecimal.ZERO));
 
-        assertEquals(
-                0,
-                result.walletBalance()
-                        .compareTo(new BigDecimal("1000")));
+                assertEquals(
+                                0,
+                                result.walletBalance()
+                                                .compareTo(new BigDecimal("1000")));
 
-        assertEquals(
-                0,
-                result.difference()
-                        .compareTo(new BigDecimal("1000")));
+                assertEquals(
+                                0,
+                                result.difference()
+                                                .compareTo(new BigDecimal("1000")));
 
-        List<AuditLog> auditLogs = auditLogRepository
-                .findByTargetTypeAndReferenceIdOrderByCreatedAtDesc(
-                        "WALLET_RECONCILIATION",
-                        wallet.getId().toString());
+                List<AuditLog> auditLogs = auditLogRepository
+                                .findByTargetTypeAndReferenceIdOrderByCreatedAtDesc(
+                                                "WALLET_RECONCILIATION",
+                                                wallet.getId().toString());
 
-        assertEquals(
-                1,
-                auditLogs.size());
+                assertEquals(
+                                1,
+                                auditLogs.size());
 
-        AuditLog auditLog = auditLogs.get(0);
+                AuditLog auditLog = auditLogs.get(0);
 
-        assertEquals(
-                "WALLET_RECONCILIATION",
-                auditLog.getTargetType());
+                assertEquals(
+                                "WALLET_RECONCILIATION",
+                                auditLog.getTargetType());
 
-        assertEquals(
-                "RECONCILIATION_FAILURE",
-                auditLog.getAction());
+                assertEquals(
+                                "RECONCILIATION_FAILURE",
+                                auditLog.getAction());
 
-        assertEquals(
-                wallet.getId().toString(),
-                auditLog.getReferenceId());
+                assertEquals(
+                                wallet.getId().toString(),
+                                auditLog.getReferenceId());
 
-        assertNotNull(
-                auditLog.getTargetUser());
+                assertNotNull(
+                                auditLog.getTargetUser());
 
-        assertEquals(
-                user.getId(),
-                auditLog.getTargetUser().getId());
+                assertEquals(
+                                user.getId(),
+                                auditLog.getTargetUser().getId());
 
-        assertNotNull(
-                auditLog.getMetadata());
+                assertNotNull(
+                                auditLog.getMetadata());
 
-        String metadata = auditLog.getMetadata();
+                String metadata = auditLog.getMetadata();
 
-        assertTrue(
-                metadata.contains(
-                        "\"walletId\": "
-                                + wallet.getId()));
+                assertTrue(
+                                metadata.contains(
+                                                "\"walletId\": "
+                                                                + wallet.getId()));
 
-        assertTrue(
-                metadata.contains(
-                        "\"currency\": \"VES\""));
+                assertTrue(
+                                metadata.contains(
+                                                "\"currency\": \"VES\""));
 
-        assertTrue(
-                metadata.contains(
-                        "\"walletBalance\": \"1000\""));
+                assertTrue(
+                                metadata.contains(
+                                                "\"walletBalance\": \"1000\""));
 
-        assertTrue(
-                metadata.contains(
-                        "\"ledgerDerivedBalance\": \"0.0000\""));
+                assertTrue(
+                                metadata.contains(
+                                                "\"ledgerDerivedBalance\": \"0.0000\""));
 
-        assertTrue(
-                metadata.contains(
-                        "\"difference\": \"1000.0000\""));
-    }
+                assertTrue(
+                                metadata.contains(
+                                                "\"difference\": \"1000.0000\""));
+        }
 
-    @Test
-    void shouldNotCreateFailureAuditWhenReconciliationSucceeds() {
+        @Test
+        void shouldNotCreateFailureAuditWhenReconciliationSucceeds() {
 
-        var result = reconciliationService.reconcile(
-                wallet.getId(),
-                Currency.VES);
+                var result = reconciliationService.reconcile(
+                                wallet.getId(),
+                                Currency.VES);
 
-        assertTrue(result.reconciled());
+                assertTrue(result.reconciled());
 
-        List<AuditLog> auditLogs = auditLogRepository
-                .findByTargetTypeAndReferenceIdOrderByCreatedAtDesc(
-                        "WALLET_RECONCILIATION",
-                        wallet.getId().toString());
+                List<AuditLog> auditLogs = auditLogRepository
+                                .findByTargetTypeAndReferenceIdOrderByCreatedAtDesc(
+                                                "WALLET_RECONCILIATION",
+                                                wallet.getId().toString());
 
-        assertTrue(auditLogs.isEmpty());
-    }
+                assertTrue(auditLogs.isEmpty());
+        }
 }

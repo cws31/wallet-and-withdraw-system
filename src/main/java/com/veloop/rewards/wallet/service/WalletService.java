@@ -5,6 +5,7 @@ import com.veloop.rewards.common.exception.InsufficientBalanceException;
 import com.veloop.rewards.common.exception.InvalidAmountException;
 import com.veloop.rewards.common.exception.WalletAlreadyExistsException;
 import com.veloop.rewards.common.exception.WalletNotFoundException;
+import com.veloop.rewards.observability.ObservabilityMetrics;
 import com.veloop.rewards.user.entity.User;
 import com.veloop.rewards.user.repository.UserRepository;
 import com.veloop.rewards.wallet.dto.WalletCreditRequest;
@@ -28,20 +29,27 @@ public class WalletService {
         private static final String WITHDRAWAL_CANCELLED = "WITHDRAWAL_CANCELLED";
 
         private final WalletRepository walletRepository;
+
         private final WalletTransactionService walletTransactionService;
+
         private final AuditLogService auditLogService;
+
         private final UserRepository userRepository;
+
+        private final ObservabilityMetrics observabilityMetrics;
 
         public WalletService(
                         WalletRepository walletRepository,
                         WalletTransactionService walletTransactionService,
                         AuditLogService auditLogService,
-                        UserRepository userRepository) {
+                        UserRepository userRepository,
+                        ObservabilityMetrics observabilityMetrics) {
 
                 this.walletRepository = walletRepository;
                 this.walletTransactionService = walletTransactionService;
                 this.auditLogService = auditLogService;
                 this.userRepository = userRepository;
+                this.observabilityMetrics = observabilityMetrics;
         }
 
         @Transactional
@@ -69,75 +77,86 @@ public class WalletService {
                         Long userId,
                         WalletCreditRequest request) {
 
-                if (request == null) {
-                        throw new InvalidAmountException();
-                }
+                try {
 
-                Currency currency = request.currency();
-                BigDecimal amount = request.amount();
+                        if (request == null) {
+                                throw new InvalidAmountException();
+                        }
 
-                if (currency == null
-                                || amount == null
-                                || amount.compareTo(BigDecimal.ZERO) <= 0) {
+                        Currency currency = request.currency();
+                        BigDecimal amount = request.amount();
 
-                        throw new InvalidAmountException();
-                }
+                        if (currency == null
+                                        || amount == null
+                                        || amount.compareTo(BigDecimal.ZERO) <= 0) {
 
-                Wallet wallet = getWallet(userId);
+                                throw new InvalidAmountException();
+                        }
 
-                BigDecimal balanceBefore = getBalance(wallet, currency);
+                        Wallet wallet = getWallet(userId);
 
-                BigDecimal balanceAfter = balanceBefore.add(amount);
+                        BigDecimal balanceBefore = getBalance(wallet, currency);
 
-                setBalance(
-                                wallet,
-                                currency,
-                                balanceAfter);
+                        BigDecimal balanceAfter = balanceBefore.add(amount);
 
-                if (currency == Currency.VES
-                                && request.transactionType() == TransactionType.CORRECTION
-                                && isWithdrawalReversal(request.source())) {
-
-                        decreaseWithdrawnVes(
+                        setBalance(
                                         wallet,
-                                        amount);
+                                        currency,
+                                        balanceAfter);
+
+                        if (currency == Currency.VES
+                                        && request.transactionType() == TransactionType.CORRECTION
+                                        && isWithdrawalReversal(request.source())) {
+
+                                decreaseWithdrawnVes(
+                                                wallet,
+                                                amount);
+                        }
+
+                        Wallet savedWallet = walletRepository.save(wallet);
+
+                        walletTransactionService.createTransaction(
+                                        userId,
+                                        savedWallet.getId(),
+                                        currency,
+                                        request.transactionType(),
+                                        amount,
+                                        balanceBefore,
+                                        balanceAfter,
+                                        request.source(),
+                                        request.referenceId(),
+                                        TransactionStatus.COMPLETED,
+                                        request.description(),
+                                        request.metadata());
+
+                        User targetUser = userRepository.findById(userId)
+                                        .orElseThrow(() -> new IllegalStateException(
+                                                        "User not found for wallet audit: "
+                                                                        + userId));
+
+                        auditLogService.record(
+                                        null,
+                                        targetUser,
+                                        "WALLET",
+                                        "WALLET_CREDIT",
+                                        request.referenceId(),
+                                        "currency=" + currency.name()
+                                                        + ", amount=" + amount
+                                                        + ", balanceBefore="
+                                                        + balanceBefore
+                                                        + ", balanceAfter="
+                                                        + balanceAfter);
+
+                        observabilityMetrics.recordWalletCreditSuccess();
+
+                        return savedWallet;
+
+                } catch (RuntimeException exception) {
+
+                        observabilityMetrics.recordWalletCreditFailure();
+
+                        throw exception;
                 }
-
-                Wallet savedWallet = walletRepository.save(wallet);
-
-                walletTransactionService.createTransaction(
-                                userId,
-                                savedWallet.getId(),
-                                currency,
-                                request.transactionType(),
-                                amount,
-                                balanceBefore,
-                                balanceAfter,
-                                request.source(),
-                                request.referenceId(),
-                                TransactionStatus.COMPLETED,
-                                request.description(),
-                                request.metadata());
-
-                User targetUser = userRepository.findById(userId)
-                                .orElseThrow(() -> new IllegalStateException(
-                                                "User not found for wallet audit: "
-                                                                + userId));
-
-                auditLogService.record(
-                                null,
-                                targetUser,
-                                "WALLET",
-                                "WALLET_CREDIT",
-                                request.referenceId(),
-                                "currency=" + currency.name()
-                                                + ", amount=" + amount
-                                                + ", balanceBefore="
-                                                + balanceBefore
-                                                + ", balanceAfter="
-                                                + balanceAfter);
-
-                return savedWallet;
         }
 
         @Transactional
@@ -145,79 +164,90 @@ public class WalletService {
                         Long userId,
                         WalletDebitRequest request) {
 
-                if (request == null) {
-                        throw new InvalidAmountException();
-                }
+                try {
 
-                Currency currency = request.currency();
-                BigDecimal amount = request.amount();
+                        if (request == null) {
+                                throw new InvalidAmountException();
+                        }
 
-                if (currency == null
-                                || amount == null
-                                || amount.compareTo(BigDecimal.ZERO) <= 0) {
+                        Currency currency = request.currency();
+                        BigDecimal amount = request.amount();
 
-                        throw new InvalidAmountException();
-                }
+                        if (currency == null
+                                        || amount == null
+                                        || amount.compareTo(BigDecimal.ZERO) <= 0) {
 
-                Wallet wallet = getWallet(userId);
+                                throw new InvalidAmountException();
+                        }
 
-                BigDecimal balanceBefore = getBalance(wallet, currency);
+                        Wallet wallet = getWallet(userId);
 
-                validateBalance(
-                                currency,
-                                balanceBefore,
-                                amount);
+                        BigDecimal balanceBefore = getBalance(wallet, currency);
 
-                BigDecimal balanceAfter = balanceBefore.subtract(amount);
-
-                setBalance(
-                                wallet,
-                                currency,
-                                balanceAfter);
-
-                if (currency == Currency.VES
-                                && request.transactionType() == TransactionType.WITHDRAWAL) {
-
-                        increaseWithdrawnVes(
-                                        wallet,
+                        validateBalance(
+                                        currency,
+                                        balanceBefore,
                                         amount);
+
+                        BigDecimal balanceAfter = balanceBefore.subtract(amount);
+
+                        setBalance(
+                                        wallet,
+                                        currency,
+                                        balanceAfter);
+
+                        if (currency == Currency.VES
+                                        && request.transactionType() == TransactionType.WITHDRAWAL) {
+
+                                increaseWithdrawnVes(
+                                                wallet,
+                                                amount);
+                        }
+
+                        Wallet savedWallet = walletRepository.save(wallet);
+
+                        walletTransactionService.createTransaction(
+                                        userId,
+                                        savedWallet.getId(),
+                                        currency,
+                                        request.transactionType(),
+                                        amount,
+                                        balanceBefore,
+                                        balanceAfter,
+                                        request.source(),
+                                        request.referenceId(),
+                                        TransactionStatus.COMPLETED,
+                                        request.description(),
+                                        request.metadata());
+
+                        User targetUser = userRepository.findById(userId)
+                                        .orElseThrow(() -> new IllegalStateException(
+                                                        "User not found for wallet audit: "
+                                                                        + userId));
+
+                        auditLogService.record(
+                                        null,
+                                        targetUser,
+                                        "WALLET",
+                                        "WALLET_DEBIT",
+                                        request.referenceId(),
+                                        "currency=" + currency.name()
+                                                        + ", amount=" + amount
+                                                        + ", balanceBefore="
+                                                        + balanceBefore
+                                                        + ", balanceAfter="
+                                                        + balanceAfter);
+
+                        observabilityMetrics.recordWalletDebitSuccess();
+
+                        return savedWallet;
+
+                } catch (RuntimeException exception) {
+
+                        observabilityMetrics.recordWalletDebitFailure();
+
+                        throw exception;
                 }
-
-                Wallet savedWallet = walletRepository.save(wallet);
-
-                walletTransactionService.createTransaction(
-                                userId,
-                                savedWallet.getId(),
-                                currency,
-                                request.transactionType(),
-                                amount,
-                                balanceBefore,
-                                balanceAfter,
-                                request.source(),
-                                request.referenceId(),
-                                TransactionStatus.COMPLETED,
-                                request.description(),
-                                request.metadata());
-
-                User targetUser = userRepository.findById(userId)
-                                .orElseThrow(() -> new IllegalStateException(
-                                                "User not found for wallet audit: "
-                                                                + userId));
-
-                auditLogService.record(
-                                null,
-                                targetUser,
-                                "WALLET",
-                                "WALLET_DEBIT",
-                                request.referenceId(),
-                                "currency=" + currency.name()
-                                                + ", amount=" + amount
-                                                + ", balanceBefore="
-                                                + balanceBefore
-                                                + ", balanceAfter="
-                                                + balanceAfter);
-
-                return savedWallet;
         }
 
         private void increaseWithdrawnVes(
@@ -241,6 +271,7 @@ public class WalletService {
                                 : wallet.getWithdrawnVes();
 
                 BigDecimal updated = current.subtract(amount);
+
                 if (updated.compareTo(BigDecimal.ZERO) < 0) {
                         throw new IllegalStateException(
                                         "withdrawnVes cannot become negative");

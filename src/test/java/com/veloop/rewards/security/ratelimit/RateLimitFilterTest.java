@@ -1,5 +1,6 @@
 package com.veloop.rewards.security.ratelimit;
 
+import com.veloop.rewards.observability.ObservabilityMetrics;
 import jakarta.servlet.FilterChain;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -20,8 +21,8 @@ class RateLimitFilterTest {
         private RateLimitProperties properties;
         private RateLimitService rateLimitService;
         private RateLimitFilter rateLimitFilter;
-
         private StringRedisTemplate redisTemplate;
+        private ObservabilityMetrics observabilityMetrics;
 
         @BeforeEach
         void setUp() {
@@ -47,10 +48,12 @@ class RateLimitFilterTest {
                 properties.setMaxEntries(10_000);
 
                 redisTemplate = mock(StringRedisTemplate.class);
+                observabilityMetrics = mock(ObservabilityMetrics.class);
 
                 rateLimitService = new RateLimitService(
                                 properties,
-                                redisTemplate);
+                                redisTemplate,
+                                observabilityMetrics);
 
                 rateLimitFilter = new RateLimitFilter(
                                 rateLimitService,
@@ -88,6 +91,8 @@ class RateLimitFilterTest {
                 assertEquals(
                                 200,
                                 response.getStatus());
+
+                verifyNoInteractions(observabilityMetrics);
         }
 
         @Test
@@ -154,6 +159,12 @@ class RateLimitFilterTest {
                                 filterChain,
                                 times(2))
                                 .doFilter(any(), any());
+
+                verify(observabilityMetrics)
+                                .recordRateLimitBlocked();
+
+                verifyNoMoreInteractions(
+                                observabilityMetrics);
         }
 
         @Test
@@ -213,6 +224,9 @@ class RateLimitFilterTest {
                                                 any(),
                                                 anyList(),
                                                 eq("60"));
+
+                verifyNoInteractions(
+                                observabilityMetrics);
         }
 
         @Test
@@ -278,6 +292,12 @@ class RateLimitFilterTest {
                 assertNotNull(
                                 thirdResponse.getHeader(
                                                 "Retry-After"));
+
+                verify(observabilityMetrics)
+                                .recordRateLimitBlocked();
+
+                verifyNoMoreInteractions(
+                                observabilityMetrics);
         }
 
         @Test
@@ -310,6 +330,8 @@ class RateLimitFilterTest {
                                 response.getStatus());
 
                 verifyNoInteractions(redisTemplate);
+
+                verifyNoInteractions(observabilityMetrics);
         }
 
         @Test
@@ -350,6 +372,8 @@ class RateLimitFilterTest {
                                 response.getStatus());
 
                 verifyNoInteractions(redisTemplate);
+
+                verifyNoInteractions(observabilityMetrics);
         }
 
         @Test
@@ -393,6 +417,9 @@ class RateLimitFilterTest {
                                                 any(),
                                                 anyList(),
                                                 eq("60"));
+
+                verifyNoInteractions(
+                                observabilityMetrics);
         }
 
         @Test
@@ -433,5 +460,8 @@ class RateLimitFilterTest {
                                 .doFilter(
                                                 request,
                                                 response);
+
+                verifyNoInteractions(
+                                observabilityMetrics);
         }
 }
