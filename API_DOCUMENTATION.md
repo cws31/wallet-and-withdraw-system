@@ -142,10 +142,6 @@ None.
 
 ### Request
 
-The registration request contains the user registration information.
-
-Example:
-
 ```json
 {
   "name": "Demo User",
@@ -337,8 +333,6 @@ Authenticated user.
 
 ### Pagination
 
-The endpoint supports pagination.
-
 Example:
 
 ```http
@@ -450,11 +444,10 @@ Admin/internal authorization required.
 
 ### Request
 
-Conceptually:
+The authenticated administrator is the wallet owner. The request does **not** contain a `userId`; the backend derives the wallet owner from the JWT principal.
 
 ```json
 {
-  "userId": 10,
   "currency": "VES",
   "amount": 1000,
   "transactionType": "ADMIN_CREDIT",
@@ -495,11 +488,10 @@ Admin/internal authorization required.
 
 ### Request
 
-Conceptually:
+The authenticated administrator is the wallet owner. The request does **not** contain a `userId`; the backend derives the wallet owner from the JWT principal.
 
 ```json
 {
-  "userId": 10,
   "currency": "VES",
   "amount": 1000,
   "transactionType": "ADMIN_DEBIT",
@@ -610,6 +602,10 @@ The withdrawal is created for the authenticated user.
 ```http
 Idempotency-Key: <unique-key>
 ```
+
+The controller accepts the header as optional at the HTTP binding level, but the withdrawal service rejects a missing or blank key. Therefore, clients must always send this header.
+
+Keys are trimmed and limited to 100 characters.
 
 ### Request
 
@@ -1033,7 +1029,7 @@ One withdrawal record
 
 The APIs use Spring Data pagination internally and expose a normalized page response.
 
-Pagination parameters are documented as:
+Pagination parameters are:
 
 ```text
 page
@@ -1145,7 +1141,7 @@ Invalid method-specific payout details are rejected before the withdrawal is cre
 
 Withdrawal creation also passes through the fraud/risk evaluation layer.
 
-The system can evaluate withdrawal activity using the configured fraud rules.
+The system evaluates withdrawal activity using the configured fraud rules.
 
 A high-risk request can be blocked.
 
@@ -1542,7 +1538,8 @@ application.error
 | PATCH | `/api/withdrawals/{withdrawalId}/processing` | JWT | Admin |
 | PATCH | `/api/withdrawals/{withdrawalId}/approve` | JWT | Admin |
 | PATCH | `/api/withdrawals/{withdrawalId}/reject` | JWT | Admin |
-| PATCH | `/api/withdrawals/{withdrawalId}/cancel` | JWT | Owner |
+| PATCH | `/api/withdrawals/{withdrawalId}/cancel` | JWT | USER role + Owner |
+| GET | `/api/admin/reconciliation/wallet/{walletId}` | JWT | ADMIN |
 | GET | `/actuator/health` | Public | Health endpoint |
 | GET | `/actuator/health/liveness` | Public | Health endpoint |
 | GET | `/actuator/health/readiness` | Public | Health endpoint |
@@ -1707,5 +1704,3 @@ Do not document:
 - Authentication behavior that is not enforced by Spring Security
 
 The implementation remains the authoritative source for API behavior.
-
----
