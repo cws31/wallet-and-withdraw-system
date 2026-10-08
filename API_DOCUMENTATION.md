@@ -2,7 +2,7 @@
 
 ## 1. Overview
 
-VELoop Rewards Backend is a Spring Boot REST API for a backend-controlled rewards wallet, payout configuration, withdrawal processing, security, audit logging, fraud protection, reconciliation, and observability.
+VELoop Rewards Backend is a Spring Boot REST API for a backend-controlled rewards wallet, payout configuration, withdrawal processing, security, audit logging, fraud protection, reconciliation, rate limiting, and observability.
 
 The backend is the source of truth for:
 
@@ -17,6 +17,7 @@ The backend is the source of truth for:
 - Authorization
 - Audit records
 - Fraud and abuse controls
+- Reconciliation
 
 The client must not calculate or directly modify financial state.
 
@@ -107,9 +108,7 @@ A normal authenticated user can:
 
 ## ADMIN
 
-Administrative operations require the appropriate administrative authorization.
-
-Admin operations include:
+Administrative operations include:
 
 - Wallet credit
 - Wallet debit
@@ -117,10 +116,11 @@ Admin operations include:
 - Withdrawal approval
 - Withdrawal rejection
 - Administrative withdrawal management
+- Reconciliation
 
 Users cannot perform administrative wallet mutations.
 
-Users also cannot access another user's wallet or withdrawal records.
+Users cannot access another user's wallet or withdrawal records.
 
 ---
 
@@ -152,27 +152,20 @@ None.
 
 ### Validation
 
-The registration request validates fields such as:
+The backend validates:
 
 - Name
 - Email
 - Password
+- Duplicate email
 
-Email must be valid.
-
-Password validation is performed before account creation.
-
-Duplicate email addresses are rejected.
-
-Passwords are stored using password hashing and are never stored as plaintext.
+Passwords are hashed and are never stored as plaintext.
 
 ### Success
 
 ```text
 201 Created
 ```
-
-The successful response follows the application's standard API response structure.
 
 ---
 
@@ -199,25 +192,13 @@ None.
 }
 ```
 
-### Validation
-
-The backend validates:
-
-- Email
-- Password
-- User existence
-- Account status
-- Password correctness
-
 ### Success
 
 ```text
 200 OK
 ```
 
-The response contains the authenticated user information and JWT access token.
-
-Example structure:
+Example response:
 
 ```json
 {
@@ -255,9 +236,9 @@ Authenticated user.
 
 ### Purpose
 
-Returns information for the currently authenticated user.
+Returns the currently authenticated user's identity.
 
-The user identity is obtained from the authenticated security context.
+The backend obtains the user from the authenticated security context rather than trusting a client-supplied user ID.
 
 ---
 
@@ -283,11 +264,7 @@ No request body.
 
 The backend determines the wallet owner from the authenticated JWT.
 
-### Response
-
-The response contains the authenticated user's wallet balances.
-
-The wallet supports:
+### Supported currencies
 
 ```text
 VES
@@ -297,23 +274,23 @@ TOKENS
 SPINS
 ```
 
-Conceptual response:
+### Conceptual response
 
 ```json
 {
   "success": true,
   "message": "Wallet retrieved successfully",
   "data": {
-    "ves": 10000.0000,
-    "sves": 500.0000,
+    "ves": 25000.0000,
+    "sves": 5000.0000,
     "gems": 100.0000,
-    "tokens": 50.0000,
-    "spins": 5.0000
+    "tokens": 500.0000,
+    "spins": 3.0000
   }
 }
 ```
 
-The exact numeric values are determined by the database.
+The actual values come from the database.
 
 ---
 
@@ -333,15 +310,34 @@ Authenticated user.
 
 ### Pagination
 
-Example:
-
 ```http
 GET /api/wallet/transactions?page=1&limit=20
 ```
 
-The API returns only transactions belonging to the authenticated user.
+Only transactions belonging to the authenticated user are returned.
 
-### Pagination response
+### Ledger fields
+
+A transaction contains fields such as:
+
+```text
+transaction_id
+user_id
+wallet_id
+currency
+transaction_type
+amount
+balance_before
+balance_after
+source
+reference_id
+status
+description
+metadata
+created_at
+```
+
+### Conceptual response
 
 ```json
 {
@@ -354,25 +350,6 @@ The API returns only transactions belonging to the authenticated user.
   "hasPrevious": false
 }
 ```
-
-### Transaction information
-
-Wallet ledger records contain information including:
-
-- Transaction ID
-- User ID
-- Wallet ID
-- Currency
-- Transaction type
-- Amount
-- Balance before
-- Balance after
-- Source
-- Reference ID
-- Status
-- Description
-- Metadata
-- Created timestamp
 
 ---
 
@@ -392,30 +369,21 @@ Authenticated user.
 
 ### Response
 
-The wallet summary contains:
+The summary contains current balances and transaction summary information.
 
-```text
-VES
-SVES
-GEMS
-TOKENS
-SPINS
-totalTransactions
-```
-
-Conceptual response:
+Example:
 
 ```json
 {
   "success": true,
   "message": "Wallet summary retrieved successfully",
   "data": {
-    "ves": 10000.0000,
-    "sves": 500.0000,
+    "ves": 25000.0000,
+    "sves": 5000.0000,
     "gems": 100.0000,
-    "tokens": 50.0000,
-    "spins": 5.0000,
-    "totalTransactions": 12
+    "tokens": 500.0000,
+    "spins": 3.0000,
+    "totalTransactions": 10
   }
 }
 ```
@@ -424,9 +392,7 @@ Conceptual response:
 
 # 7. Administrative Wallet APIs
 
-Wallet mutations are administrative/internal operations.
-
-Normal users cannot directly call these operations.
+These operations are protected administrative operations.
 
 ## 7.1 Credit Wallet
 
@@ -440,11 +406,11 @@ Required.
 
 ### Authorization
 
-Admin/internal authorization required.
+Admin authorization required.
 
 ### Request
 
-The authenticated administrator is the wallet owner. The request does **not** contain a `userId`; the backend derives the wallet owner from the JWT principal.
+The request does not contain a user ID. The backend derives the wallet owner from the authenticated principal.
 
 ```json
 {
@@ -460,15 +426,21 @@ The authenticated administrator is the wallet owner. The request does **not** co
 
 ### Backend behavior
 
-The backend:
+```text
+Validate request
+      ↓
+Load wallet
+      ↓
+Apply credit
+      ↓
+Persist wallet
+      ↓
+Create ledger transaction
+      ↓
+Audit sensitive operation
+```
 
-1. Validates the request.
-2. Loads the wallet.
-3. Performs the wallet mutation.
-4. Creates the corresponding ledger transaction.
-5. Records the sensitive operation through the audit mechanism.
-
-The client cannot directly set the final wallet balance.
+The client cannot set the final wallet balance.
 
 ---
 
@@ -484,11 +456,9 @@ Required.
 
 ### Authorization
 
-Admin/internal authorization required.
+Admin authorization required.
 
 ### Request
-
-The authenticated administrator is the wallet owner. The request does **not** contain a `userId`; the backend derives the wallet owner from the JWT principal.
 
 ```json
 {
@@ -506,10 +476,9 @@ The authenticated administrator is the wallet owner. The request does **not** co
 
 The backend validates:
 
-- User
 - Currency
 - Amount
-- Wallet availability
+- Wallet
 - Available balance
 - Transaction type
 
@@ -533,23 +502,11 @@ Required.
 
 Authenticated user.
 
-### Request
-
-No request body.
-
 ### Response
 
-The API returns backend-controlled active payout configuration.
+The backend returns active payout methods and options.
 
-It contains:
-
-- Active payout methods
-- Active payout options
-- Payout amount
-- Currency
-- Required currency amount
-
-Conceptual response:
+Example:
 
 ```json
 {
@@ -573,7 +530,7 @@ Conceptual response:
 }
 ```
 
-Inactive payout methods and inactive payout options are excluded.
+Inactive payout methods/options are excluded.
 
 The frontend must not hardcode payout values.
 
@@ -591,21 +548,23 @@ POST /api/withdrawals
 
 Required.
 
-### Authorization
+```http
+Authorization: Bearer <JWT>
+```
 
-Authenticated user.
-
-The withdrawal is created for the authenticated user.
-
-### Required Header
+### Required header
 
 ```http
 Idempotency-Key: <unique-key>
 ```
 
-The controller accepts the header as optional at the HTTP binding level, but the withdrawal service rejects a missing or blank key. Therefore, clients must always send this header.
+The controller accepts the header as optional at HTTP binding level, but the service rejects a missing or blank key. Clients must therefore always send it.
 
-Keys are trimmed and limited to 100 characters.
+Maximum key length:
+
+```text
+100 characters
+```
 
 ### Request
 
@@ -613,31 +572,29 @@ Keys are trimmed and limited to 100 characters.
 {
   "payoutMethodId": 1,
   "payoutOptionId": 1,
-  "payoutDetails": "user@upi"
+  "payoutDetails": "demo@veloop.test"
 }
 ```
 
 ### Important
 
-The request does **not** contain the final VES amount to deduct.
+The client does not provide the authoritative VES amount.
 
-The backend resolves the financial values from the selected payout option.
-
-The backend determines:
+The backend resolves:
 
 ```text
 Payout Method
-        ↓
+       ↓
 Payout Option
-        ↓
+       ↓
 Payout Amount
-        ↓
+       ↓
+Currency
+       ↓
 Required VES
-        ↓
-Wallet Debit
+       ↓
+Wallet operation
 ```
-
-The client cannot manipulate the required VES value.
 
 ### Validation
 
@@ -646,39 +603,35 @@ The backend validates:
 - Idempotency key
 - Request fingerprint
 - User existence
-- User withdrawal eligibility
+- Withdrawal eligibility
 - Payout method existence
-- Payout method validity
-- Payout method active status
+- Payout method activity
 - Payout option existence
-- Payout option validity
-- Payout option active status
-- Payout option/method relationship
-- Method-specific payout details
+- Payout option activity
+- Method/option relationship
+- Payout details
 - Required VES balance
-- Fraud and abuse risk controls
+- Fraud/risk decision
 
-### Financial behavior
-
-The implemented strategy is:
+### Normal ALLOW path
 
 ```text
-Validate withdrawal
-        ↓
-Resolve payout configuration
-        ↓
-Validate wallet balance
-        ↓
-Debit required VES
-        ↓
+Request
+   ↓
+Validation
+   ↓
+Fraud ALLOW
+   ↓
+Resolve payout values
+   ↓
+Debit VES
+   ↓
 Create WITHDRAWAL ledger transaction
-        ↓
+   ↓
 Create PENDING withdrawal
-        ↓
-Create audit records
+   ↓
+Audit + idempotency
 ```
-
-The wallet deduction occurs when the withdrawal is created.
 
 ---
 
@@ -696,27 +649,7 @@ Required.
 
 Authenticated user.
 
-### Ownership
-
 Only withdrawals belonging to the authenticated user are returned.
-
-### Pagination
-
-The service returns:
-
-```json
-{
-  "content": [],
-  "page": 1,
-  "limit": 20,
-  "totalElements": 0,
-  "totalPages": 0,
-  "hasNext": false,
-  "hasPrevious": false
-}
-```
-
-Withdrawals are returned using the repository's created-date descending order.
 
 ---
 
@@ -736,34 +669,9 @@ Authenticated user.
 
 ### Ownership
 
-The requested withdrawal must belong to the authenticated user.
+The withdrawal must belong to the authenticated user.
 
-Attempting to access another user's withdrawal is rejected.
-
-### Response
-
-A withdrawal response represents information including:
-
-```text
-withdrawalId
-user
-payout method
-payout option
-currency
-currency amount
-payout amount
-payout details
-status
-rejection reason
-review note
-transaction
-requestedAt
-processedAt
-createdAt
-updatedAt
-```
-
-The exact serialized response follows the current `WithdrawalResponse` DTO.
+Access to another user's withdrawal is rejected.
 
 ---
 
@@ -779,15 +687,15 @@ Required.
 
 ### Authorization
 
-Admin authorization required.
+Admin.
 
-### Allowed transition
+### Transition
 
 ```text
 PENDING → PROCESSING
 ```
 
-A withdrawal that is not `PENDING` cannot be moved into `PROCESSING`.
+Only eligible `PENDING` withdrawals can be moved to `PROCESSING`.
 
 ---
 
@@ -803,22 +711,20 @@ Required.
 
 ### Authorization
 
-Admin authorization required.
+Admin.
 
-### Allowed transition
+Approval follows the implemented state guards.
 
-Approval is allowed according to the implemented withdrawal state rules.
+For a normally debited withdrawal, approval does not perform a second wallet debit.
 
-The approval operation does **not** perform another wallet deduction.
-
-The original withdrawal deduction remains represented by the original ledger transaction.
+For a REVIEW withdrawal that has no linked financial transaction, approval performs the required VES debit before approval.
 
 ---
 
 ## 9.6 Reject Withdrawal
 
 ```http
-PATCH /api/withdrawals/{withdrawalId}/reject
+PATCH /api/withdrawals/{withdrawalId}/reject?rejectionReason=...&reviewNote=...
 ```
 
 ### Authentication
@@ -827,31 +733,26 @@ Required.
 
 ### Authorization
 
-Admin authorization required.
+Admin.
 
-### Rejection reason
+### Required parameter
 
-A rejection requires a rejection reason.
+```text
+rejectionReason
+```
+
+### Allowed states
+
+```text
+PENDING
+PROCESSING
+```
 
 ### Financial behavior
 
-A rejected withdrawal reverses the original wallet deduction.
+A normally debited withdrawal is reversed using a compensating `CORRECTION` credit.
 
-Conceptually:
-
-```text
-Withdrawal created
-       ↓
-VES deducted
-       ↓
-REJECTED
-       ↓
-Compensating VES credit
-       ↓
-CORRECTION ledger transaction
-```
-
-The original transaction is not deleted.
+The original debit remains in the ledger.
 
 ---
 
@@ -867,25 +768,33 @@ Required.
 
 ### Authorization
 
-Authenticated owner.
+Authenticated `USER` role + owner.
 
-### Allowed transition
+### Allowed state
 
 ```text
-PENDING → CANCELLED
+PENDING
 ```
 
-Cancellation reverses the original wallet deduction.
+### Financial behavior
 
-A compensating ledger transaction is created.
+For a normally debited withdrawal:
 
-Users cannot use cancellation to arbitrarily modify a withdrawal that has already moved beyond the allowed state.
+```text
+Original WITHDRAWAL debit
+        ↓
+CANCELLED
+        ↓
+CORRECTION credit
+```
+
+The original transaction is preserved.
 
 ---
 
 # 10. Withdrawal Lifecycle
 
-The implemented withdrawal statuses are:
+Statuses:
 
 ```text
 PENDING
@@ -898,74 +807,26 @@ CANCELLED
 Lifecycle:
 
 ```text
-                    ┌── APPROVED
-                    │
-PENDING ──→ PROCESSING
-    │               │
-    │               └── REJECTED
+                 ┌──→ PROCESSING ──→ APPROVED
+                 │         │
+PENDING ─────────┤         └────────→ REJECTED
+    │            │
+    ├────────────┴────────────→ REJECTED
     │
-    ├── REJECTED
-    │
-    └── CANCELLED
+    └─────────────────────────→ CANCELLED
 ```
 
-## Creation
-
-```text
-POST /api/withdrawals
-        ↓
-PENDING
-```
-
-The wallet is debited immediately.
-
-## Processing
-
-```text
-PENDING
-   ↓
-PROCESSING
-```
-
-Admin operation.
-
-## Approval
-
-```text
-PROCESSING
-   ↓
-APPROVED
-```
-
-Approval does not perform another wallet debit.
-
-## Rejection
-
-```text
-PENDING/PROCESSING
-        ↓
-    REJECTED
-        ↓
-Wallet reversal
-```
-
-## Cancellation
-
-```text
-PENDING
-   ↓
-CANCELLED
-   ↓
-Wallet reversal
-```
-
-Terminal withdrawal states must not be arbitrarily changed into unrelated states.
+The exact state guards implemented by `WithdrawalService` are authoritative.
 
 ---
 
 # 11. Idempotency
 
-Withdrawal creation uses an idempotency key.
+Primary endpoint:
+
+```http
+POST /api/withdrawals
+```
 
 Header:
 
@@ -973,63 +834,55 @@ Header:
 Idempotency-Key: withdrawal-001
 ```
 
-The backend:
+Flow:
 
 ```text
-Idempotency-Key
-       ↓
+Request
+   ↓
+Validate key
+   ↓
 Normalize key
-       ↓
+   ↓
 Create request fingerprint
-       ↓
-Find existing request
-       ↓
-Compare fingerprint
-       ↓
-Return existing withdrawal
+   ↓
+Lookup user + key
+       |
+       +-- Not found → process
+       |
+       +-- Found → compare fingerprint
+                       |
+                       +-- Same → return existing
+                       |
+                       +-- Different → reject
 ```
 
-## Same key + same request
+### Same key + same request
 
-A repeated request using the same key and equivalent request fingerprint returns the existing withdrawal rather than creating another withdrawal.
+The existing withdrawal is returned.
 
-This prevents:
+No second financial operation is created.
 
-- Double clicks
-- Client retries
-- Network retries
-- Duplicate submissions
-- Multiple wallet deductions for one logical request
+### Same key + different request
 
-## Same key + different request
+The request is rejected as an idempotency conflict.
 
-The idempotency fingerprint is checked.
+### Concurrency
 
-A previously used idempotency key must not be reused for a different withdrawal request.
-
-## Concurrent requests
-
-The idempotency layer also participates in withdrawal concurrency protection.
-
-The objective is:
+Idempotency works together with:
 
 ```text
-Two identical requests
-        ↓
-One logical withdrawal
-        ↓
-One wallet deduction
-        ↓
-One withdrawal record
+Database uniqueness
+Transactional boundaries
+Wallet optimistic locking
+Balance validation
+Withdrawal state guards
 ```
 
 ---
 
 # 12. Pagination
 
-The APIs use Spring Data pagination internally and expose a normalized page response.
-
-Pagination parameters are:
+Supported pagination parameters:
 
 ```text
 page
@@ -1039,16 +892,16 @@ limit
 Example:
 
 ```http
-GET /api/withdrawals?page=1&limit=20
-```
-
-Example:
-
-```http
 GET /api/wallet/transactions?page=1&limit=20
 ```
 
-The response contains:
+```http
+GET /api/withdrawals?page=1&limit=20
+```
+
+The public page number is one-based.
+
+Typical response fields:
 
 ```text
 content
@@ -1060,24 +913,24 @@ hasNext
 hasPrevious
 ```
 
-The public page number is one-based.
-
 ---
 
 # 13. Validation
 
-Validation occurs at multiple layers.
+Validation happens at multiple layers.
 
 ## Request validation
 
-Request DTOs use Jakarta Bean Validation where applicable.
+DTOs use Jakarta Bean Validation.
 
-Examples include:
+Examples:
 
 ```text
-@NotBlank
 @NotNull
+@NotBlank
 @Email
+@Positive
+@DecimalMin
 @Size
 ```
 
@@ -1085,106 +938,191 @@ Examples include:
 
 The service layer validates:
 
-- User existence
-- Account eligibility
+- User
+- Account status/eligibility
 - Currency
 - Amount
 - Wallet balance
 - Payout method
 - Payout option
-- Payout method status
-- Payout option status
-- Payout method/option relationship
+- Method status
+- Option status
+- Method/option relationship
 - Payout details
 - Withdrawal ownership
 - Withdrawal state
 - Idempotency
-- Fraud/risk rules
+- Fraud/risk
 
-## Server-authoritative financial values
+## Server-authoritative values
 
-The client cannot determine:
+The backend determines:
 
 ```text
-Current wallet balance
+Wallet balance
 Required VES
 Payout value
 Withdrawal amount
 Withdrawal status
 ```
 
-These values are resolved and validated by the backend.
+The client cannot override these values.
 
 ---
 
 # 14. Payout Detail Validation
 
-Withdrawal payout details are validated according to the selected payout method.
+Payout details are validated according to the selected method.
 
-The backend receives:
+Example:
 
 ```json
 {
   "payoutMethodId": 1,
   "payoutOptionId": 1,
-  "payoutDetails": "user@upi"
+  "payoutDetails": "demo@veloop.test"
 }
 ```
 
-The service resolves the payout method and passes the method code and supplied details to the payout detail validator.
+The backend resolves the method and validates the supplied details.
 
-Invalid method-specific payout details are rejected before the withdrawal is created.
+Invalid method-specific payout information is rejected before a normal withdrawal is created.
 
 ---
 
 # 15. Fraud and Abuse Protection
 
-Withdrawal creation also passes through the fraud/risk evaluation layer.
+Withdrawal creation passes through the fraud/risk layer.
 
-The system evaluates withdrawal activity using the configured fraud rules.
-
-A high-risk request can be blocked.
-
-A request requiring review can be retained with a review indication rather than being silently treated as a normal withdrawal.
-
-The final financial withdrawal operation therefore follows:
+Implemented rules:
 
 ```text
-Authentication
-      ↓
-Authorization
-      ↓
-Request validation
-      ↓
-Idempotency
-      ↓
-Eligibility
-      ↓
-Payout validation
-      ↓
-Fraud/risk evaluation
-      ↓
-Wallet validation
-      ↓
-Wallet debit
-      ↓
-Withdrawal creation
+Rapid Withdrawal
+Repeated Withdrawal
+Repeated Failed Request
+Unusual Wallet Activity
+Suspicious Payout Request
+Suspicious Account Activity
+Multiple Suspicious Payout Pattern
+```
+
+Risk decisions:
+
+```text
+ALLOW
+REVIEW
+BLOCK
+```
+
+### BLOCK
+
+```text
+Risk evaluation
+   ↓
+BLOCK
+   ↓
+Persist fraud event
+   ↓
+Reject withdrawal
+   ↓
+No normal withdrawal
+   ↓
+No normal wallet debit
+```
+
+### REVIEW
+
+```text
+Risk evaluation
+   ↓
+REVIEW
+   ↓
+Create PENDING withdrawal
+   ↓
+Retain review information
+   ↓
+No normal initial debit
+```
+
+An authorized approval can perform the financial debit for a review withdrawal that has no linked transaction.
+
+### ALLOW
+
+```text
+Risk evaluation
+   ↓
+ALLOW
+   ↓
+Resolve payout values
+   ↓
+Validate wallet balance
+   ↓
+Debit wallet
+   ↓
+Create withdrawal + ledger
 ```
 
 ---
 
-# 16. Rate Limits
+# 16. Dynamic Risk Scoring
 
-Rate limiting is enabled through the configured security rate-limit system.
+The risk engine uses configuration-driven scoring.
 
-Current configuration:
+Conceptually:
 
-| API category | Limit | Window |
+```text
+severity
+   ↓
+normalize to [0,1]
+   ↓
+nonlinear scoring
+   ↓
+severity² × maxRuleScore
+   ↓
+aggregate rule scores
+   ↓
+global decision
+```
+
+Global configuration includes:
+
+```text
+review threshold
+block threshold
+maximum score
+```
+
+Current default global thresholds:
+
+```text
+Review threshold = 30
+Block threshold  = 60
+Maximum score    = 100
+```
+
+Rule-specific configuration includes values such as:
+
+```text
+baseline
+window
+maxExpected
+maxScore
+```
+
+Underlying historical activity is sourced from authoritative wallet, withdrawal and authentication data.
+
+---
+
+# 17. Rate Limiting
+
+Redis-backed rate limiting protects sensitive APIs.
+
+| Category | Limit | Window |
 |---|---:|---:|
 | Login | 5 requests | 60 seconds |
 | Withdrawal creation | 5 requests | 60 seconds |
-| Wallet mutations | 20 requests | 60 seconds |
-| Withdrawal mutations | 20 requests | 60 seconds |
+| Wallet mutation | 20 requests | 60 seconds |
+| Withdrawal mutation | 20 requests | 60 seconds |
 
 Configuration:
 
@@ -1204,51 +1142,109 @@ security.rate-limit.withdrawal-mutation-requests=20
 security.rate-limit.withdrawal-mutation-window-seconds=60
 ```
 
-When a configured rate limit is exceeded:
+Exceeded limit:
 
 ```text
 429 Too Many Requests
 ```
 
-The application also records the observability metric:
+Blocked metric:
 
 ```text
 rate_limit.blocked
 ```
 
-The rate limiter is designed to fail open for infrastructure/Redis failures rather than incorrectly blocking all requests because the rate-limit backend is unavailable.
+The current implementation uses fail-open behavior for Redis/infrastructure failures.
 
 ---
 
-# 17. Error Handling
+# 18. Security
 
-The application uses centralized exception handling.
+## JWT
 
-Expected errors are translated into appropriate HTTP responses.
+```http
+Authorization: Bearer <JWT>
+```
 
-## Common HTTP statuses
+## Passwords
+
+Passwords are BCrypt-hashed.
+
+## Authorization
+
+Admin-only operations are protected using server-side authorization.
+
+## Ownership
+
+The authenticated principal determines user ownership.
+
+## Financial protection
+
+The backend owns:
+
+```text
+wallet balance
+payout value
+required VES
+withdrawal status
+```
+
+## CORS
+
+Allowed origins are configuration-driven.
+
+## CSRF
+
+CSRF is disabled because the API is stateless and JWT-based.
+
+## Form Login / Basic Auth
+
+These are not part of the API security model.
+
+## Secrets
+
+Never commit:
+
+```text
+.env
+DB credentials
+JWT secrets
+API keys
+production credentials
+private keys
+```
+
+Use:
+
+```text
+.env.example
+```
+
+---
+
+# 19. Error Handling
+
+Common statuses:
 
 | Status | Meaning |
 |---:|---|
 | 200 | Successful request |
 | 201 | Resource created |
-| 400 | Invalid request or validation/business error |
+| 400 | Invalid request or business validation failure |
 | 401 | Authentication required/failed |
-| 403 | Authenticated but not authorized |
+| 403 | Authenticated but unauthorized |
 | 404 | Resource not found |
 | 409 | Conflict/idempotency/concurrency condition |
 | 429 | Rate limit exceeded |
-| 500 | Unexpected application error |
+| 500 | Unexpected server error |
 
-The exact error body depends on the exception handled by the application's global exception handling layer.
-
-Clients should not receive raw database exceptions or internal stack traces as normal API responses.
+The application should not expose raw database exceptions or internal stack traces to clients.
 
 ---
 
-# 18. Common Withdrawal Errors
+# 20. Common Withdrawal Errors
 
-Examples of business errors include:
+Possible business errors include:
 
 ```text
 User not found
@@ -1269,41 +1265,7 @@ Fraud risk blocked
 
 ---
 
-# 19. Security Errors
-
-## Missing or invalid JWT
-
-```text
-401 Unauthorized
-```
-
-Example:
-
-```http
-Authorization: Bearer <invalid-token>
-```
-
-## Insufficient authorization
-
-```text
-403 Forbidden
-```
-
-Example:
-
-```text
-USER attempting ADMIN-only wallet mutation
-```
-
-## Ownership violation
-
-A user cannot retrieve or mutate another user's withdrawal.
-
----
-
-# 20. Wallet Financial Model
-
-Wallet balances are backend-controlled.
+# 21. Wallet Financial Model
 
 Supported currencies:
 
@@ -1315,81 +1277,73 @@ TOKENS
 SPINS
 ```
 
-Every successful wallet mutation creates a corresponding ledger transaction.
-
-Conceptually:
-
-```text
 Credit:
 
-balanceAfter = balanceBefore + amount
+```text
+balance_after = balance_before + amount
 ```
 
-```text
 Debit:
 
-balanceAfter = balanceBefore - amount
+```text
+balance_after = balance_before - amount
 ```
 
-The ledger preserves:
+Every successful wallet mutation produces a ledger record.
+
+Ledger data includes:
 
 ```text
-balanceBefore
-balanceAfter
-amount
+transaction_id
+user_id
+wallet_id
 currency
-transactionType
+transaction_type
+amount
+balance_before
+balance_after
 source
-referenceId
+reference_id
 status
+description
+metadata
+created_at
 ```
 
 ---
 
-# 21. Withdrawal Financial Model
+# 22. Withdrawal Financial Model
 
-The current strategy is immediate deduction.
+Normal withdrawal creation uses immediate VES deduction.
 
 Example:
 
 ```text
-Wallet balance
-10,000 VES
+Wallet:
+25,000 VES
 
-Withdrawal requires
+Withdrawal:
 2,400 VES
 
-After creation
-7,600 VES
+After creation:
+22,600 VES
 ```
 
-The ledger records the withdrawal debit.
-
-If the withdrawal is rejected:
+If rejected or cancelled:
 
 ```text
-7,600 VES
-    +
-2,400 VES reversal
-    =
-10,000 VES
+22,600 VES
++
+2,400 VES CORRECTION
+=
+25,000 VES
 ```
 
-If the withdrawal is cancelled while eligible:
-
-```text
-7,600 VES
-    +
-2,400 VES reversal
-    =
-10,000 VES
-```
-
-The original debit remains in the ledger and the reversal is represented separately.
+The original `WITHDRAWAL` ledger transaction is not deleted.
 
 ---
 
-# 22. Auditability
+# 23. Auditability
 
 Sensitive operations are audited.
 
@@ -1408,15 +1362,29 @@ WITHDRAWAL_CANCELLED
 RECONCILIATION_FAILURE
 ```
 
-Withdrawal lifecycle changes retain the actor and state transition information needed for investigation.
+Withdrawal-specific lifecycle records are also stored.
+
+Fraud decisions are stored in `fraud_risk_events`.
 
 ---
 
-# 23. Reconciliation
+# 24. Reconciliation
 
-The reconciliation API compares the stored wallet balance with the balance derived from completed ledger transactions.
+Admin endpoint:
 
-Conceptually:
+```http
+GET /api/admin/reconciliation/wallet/{walletId}?currency=VES
+```
+
+### Authentication
+
+Required.
+
+### Authorization
+
+Admin.
+
+### Comparison
 
 ```text
 Stored Wallet Balance
@@ -1424,50 +1392,42 @@ Stored Wallet Balance
 Ledger-Derived Balance
 ```
 
-If the values match:
+### Success
 
 ```text
+Stored balance = ledger-derived balance
+        ↓
 reconciliation.success
 ```
 
-is recorded.
-
-If they differ:
+### Failure
 
 ```text
+Stored balance != ledger-derived balance
+        ↓
 reconciliation.failure
+        ↓
+Audit record
 ```
 
-is recorded and the reconciliation failure is audited.
-
-Reconciliation is designed to detect accounting inconsistencies rather than silently correcting them.
+Reconciliation detects inconsistencies. It does not silently modify balances.
 
 ---
 
-# 24. Observability Headers
+# 25. Observability
 
-The API supports request and correlation identifiers.
-
-Headers:
+## Request headers
 
 ```http
 X-Correlation-ID
 X-Request-ID
 ```
 
-If a correlation ID is supplied and valid, it is propagated.
+These identifiers support request tracing.
 
-Request IDs are generated by the request filter.
+## Request completion logging
 
-The IDs are also placed into the logging context so that a request can be traced through structured logs.
-
-The response includes the identifiers.
-
----
-
-# 25. Structured Logging
-
-HTTP request completion is logged using structured logging information including:
+Structured request information includes:
 
 ```text
 event=request.completed
@@ -1479,23 +1439,7 @@ correlationId
 requestId
 ```
 
-This allows individual API requests to be correlated with application logs.
-
----
-
-# 26. Actuator Endpoints
-
-Health endpoints are exposed for application health monitoring.
-
-```http
-GET /actuator/health
-GET /actuator/health/liveness
-GET /actuator/health/readiness
-```
-
-Metrics are exposed through the Actuator metrics endpoint according to the application's management endpoint configuration.
-
-Examples of application metrics include:
+## Application metrics
 
 ```text
 wallet.credit.success
@@ -1519,9 +1463,39 @@ application.error
 
 ---
 
-# 27. API Endpoint Summary
+# 26. Actuator APIs
 
-| Method | Endpoint | Authentication | Authorization |
+Health:
+
+```http
+GET /actuator/health
+GET /actuator/health/liveness
+GET /actuator/health/readiness
+```
+
+Metrics:
+
+```http
+GET /actuator/metrics
+```
+
+OpenAPI:
+
+```http
+GET /v3/api-docs
+```
+
+Swagger UI:
+
+```text
+http://localhost:8080/swagger-ui.html
+```
+
+---
+
+# 27. Complete API Endpoint Summary
+
+| Method | Endpoint | Auth | Authorization |
 |---|---|---|---|
 | POST | `/api/auth/register` | No | Public |
 | POST | `/api/auth/login` | No | Public |
@@ -1529,29 +1503,40 @@ application.error
 | GET | `/api/wallet` | JWT | User |
 | GET | `/api/wallet/transactions` | JWT | User |
 | GET | `/api/wallet/summary` | JWT | User |
-| POST | `/api/wallet/credit` | JWT | Admin/Internal |
-| POST | `/api/wallet/debit` | JWT | Admin/Internal |
+| POST | `/api/wallet/credit` | JWT | ADMIN |
+| POST | `/api/wallet/debit` | JWT | ADMIN |
 | GET | `/api/payouts/configuration` | JWT | Authenticated |
 | POST | `/api/withdrawals` | JWT | User |
 | GET | `/api/withdrawals` | JWT | User |
 | GET | `/api/withdrawals/{withdrawalId}` | JWT | Owner |
-| PATCH | `/api/withdrawals/{withdrawalId}/processing` | JWT | Admin |
-| PATCH | `/api/withdrawals/{withdrawalId}/approve` | JWT | Admin |
-| PATCH | `/api/withdrawals/{withdrawalId}/reject` | JWT | Admin |
-| PATCH | `/api/withdrawals/{withdrawalId}/cancel` | JWT | USER role + Owner |
+| PATCH | `/api/withdrawals/{withdrawalId}/processing` | JWT | ADMIN |
+| PATCH | `/api/withdrawals/{withdrawalId}/approve` | JWT | ADMIN |
+| PATCH | `/api/withdrawals/{withdrawalId}/reject` | JWT | ADMIN |
+| PATCH | `/api/withdrawals/{withdrawalId}/cancel` | JWT | USER + Owner |
 | GET | `/api/admin/reconciliation/wallet/{walletId}` | JWT | ADMIN |
-| GET | `/actuator/health` | Public | Health endpoint |
-| GET | `/actuator/health/liveness` | Public | Health endpoint |
-| GET | `/actuator/health/readiness` | Public | Health endpoint |
+| GET | `/actuator/health` | No | Operational |
+| GET | `/actuator/health/liveness` | No | Operational |
+| GET | `/actuator/health/readiness` | No | Operational |
+| GET | `/actuator/metrics` | No/Configured | Operational |
+| GET | `/v3/api-docs` | No/Configured | API documentation |
+| GET | `/swagger-ui.html` | No/Configured | API documentation |
 
 ---
 
-# 28. Example End-to-End Withdrawal Flow
+# 28. End-to-End Withdrawal Example
 
-## Step 1 — Authenticate
+## Step 1 — Login
 
 ```http
 POST /api/auth/login
+Content-Type: application/json
+```
+
+```json
+{
+  "email": "demo@veloop.test",
+  "password": "Demo@12345"
+}
 ```
 
 Receive JWT.
@@ -1561,6 +1546,13 @@ Receive JWT.
 ```http
 GET /api/payouts/configuration
 Authorization: Bearer <JWT>
+```
+
+Select:
+
+```text
+payoutMethodId
+payoutOptionId
 ```
 
 ## Step 3 — Create withdrawal
@@ -1576,11 +1568,11 @@ Content-Type: application/json
 {
   "payoutMethodId": 1,
   "payoutOptionId": 1,
-  "payoutDetails": "user@upi"
+  "payoutDetails": "demo@veloop.test"
 }
 ```
 
-## Step 4 — Backend validates
+## Step 4 — Validation
 
 ```text
 Authentication
@@ -1589,7 +1581,7 @@ Authorization
       ↓
 Idempotency
       ↓
-User eligibility
+Eligibility
       ↓
 Payout method
       ↓
@@ -1597,14 +1589,18 @@ Payout option
       ↓
 Payout details
       ↓
-Fraud/risk controls
+Fraud/risk
       ↓
 Wallet balance
 ```
 
 ## Step 5 — Financial operation
 
+Normal ALLOW path:
+
 ```text
+Resolve required VES
+      ↓
 Wallet debit
       ↓
 Ledger transaction
@@ -1616,17 +1612,18 @@ Audit
 PENDING
 ```
 
-## Step 6 — Admin processing
+## Step 6 — Processing
 
 ```http
 PATCH /api/withdrawals/{withdrawalId}/processing
+Authorization: Bearer <ADMIN-JWT>
 ```
 
 ```text
 PENDING → PROCESSING
 ```
 
-## Step 7 — Admin decision
+## Step 7 — Approve or reject
 
 Approve:
 
@@ -1634,57 +1631,49 @@ Approve:
 PATCH /api/withdrawals/{withdrawalId}/approve
 ```
 
-or reject:
+Reject:
 
 ```http
-PATCH /api/withdrawals/{withdrawalId}/reject
+PATCH /api/withdrawals/{withdrawalId}/reject?rejectionReason=Invalid%20request
 ```
 
-If rejected:
+## Step 8 — Cancellation
 
-```text
-REJECTED
-   ↓
-VES reversal
-   ↓
-CORRECTION ledger transaction
-```
-
-## Step 8 — User cancellation
-
-If still eligible:
+For eligible pending withdrawal:
 
 ```http
 PATCH /api/withdrawals/{withdrawalId}/cancel
+Authorization: Bearer <USER-JWT>
 ```
 
 ```text
-PENDING → CANCELLED
-        ↓
-VES reversal
+PENDING
+   ↓
+CANCELLED
+   ↓
+CORRECTION ledger transaction
 ```
 
 ---
 
 # 29. API Design Principles
 
-The API follows these principles:
-
-1. The backend is the financial source of truth.
-2. JWT authentication determines user identity.
+1. Backend is the financial source of truth.
+2. JWT identity determines the user.
 3. Authorization is enforced server-side.
-4. Users cannot access another user's wallet or withdrawal data.
-5. Payout configuration is backend-controlled.
-6. Required VES is resolved from the backend.
-7. Wallet mutations create ledger records.
-8. Withdrawal creation deducts VES immediately.
-9. Rejection and cancellation use compensating ledger transactions.
-10. Withdrawal creation is idempotent.
-11. Sensitive endpoints are rate limited.
+4. Resource ownership is enforced server-side.
+5. Payout configuration comes from the backend.
+6. Required VES is resolved by the backend.
+7. Successful wallet mutations create ledger records.
+8. Withdrawal creation uses immediate deduction for the normal ALLOW path.
+9. Rejection/cancellation uses compensating ledger transactions.
+10. Withdrawal creation uses idempotency.
+11. Sensitive APIs use rate limiting.
 12. Fraud/risk controls participate in withdrawal creation.
 13. Sensitive operations are audited.
-14. Request and correlation IDs support tracing.
-15. Pagination prevents unbounded transaction/withdrawal responses.
+14. Reconciliation verifies wallet and ledger consistency.
+15. Financial history is not deleted to reverse operations.
+16. Concurrent financial updates are protected.
 
 ---
 
@@ -1692,15 +1681,64 @@ The API follows these principles:
 
 This document describes the implemented API behavior.
 
-When API behavior changes in source code, this document must be updated in the same change.
+When source code changes an API contract, this documentation must be updated in the same change.
 
 Do not document:
 
-- Planned endpoints as implemented endpoints
-- Removed endpoints
-- Frontend-only behavior
-- Hardcoded payout values that are not in backend configuration
-- Unsupported withdrawal transitions
-- Authentication behavior that is not enforced by Spring Security
+- planned endpoints as implemented
+- removed endpoints
+- frontend-only financial logic
+- client-authoritative wallet balances
+- client-authoritative withdrawal amounts
+- unsupported withdrawal state transitions
+- unsupported provider behavior
+- authentication rules that are not enforced by the backend
 
 The implementation remains the authoritative source for API behavior.
+
+---
+
+# 31. Verification Status
+
+Current backend verification:
+
+```text
+Automated regression:
+257 / 257 PASS
+
+Failures:
+0
+
+Errors:
+0
+
+Manual API verification:
+COMPLETED
+
+Demo/seed data:
+VERIFIED
+
+Postman collection:
+COMPLETED
+
+Architecture documentation:
+COMPLETED
+
+Database documentation:
+COMPLETED
+
+Security documentation:
+COMPLETED
+
+Testing documentation:
+COMPLETED
+
+Reconciliation documentation:
+COMPLETED
+```
+
+Backend status:
+
+```text
+READY FOR FRONTEND / DEPLOYMENT / DEMONSTRATION
+```
