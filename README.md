@@ -1,1632 +1,96 @@
-# VELoop Rewards — Wallet & Withdrawal Backend
-
-> **Project Status:** 🚧 Backend Under Development
-> **Current Checkpoint:** `BACKEND-CHECKPOINT-01`
-> **Next Phase:** `BACKEND-PHASE-02 — Production Hardening & Requirement Completion`
-> **Final Backend Target:** `BACKEND-COMPLETE-100%`
-> **Frontend:** Not started — intentionally postponed until backend completion
-
----
-
-# 1. Purpose of This README
-
-This README is the **continuation and development handoff document** for the VELoop Rewards Wallet & Withdrawal Backend.
-
-It is intentionally written so that a developer can continue development from the current state **without inspecting the entire project from the beginning**.
-
-Before making changes, read this document completely.
-
-This document records:
-
-* Current project architecture
-* Technology stack
-* Implemented modules
-* Implemented functionality
-* Database structure
-* Security decisions
-* Wallet accounting rules
-* Withdrawal rules
-* Idempotency behavior
-* Rate-limiting behavior
-* Testing status
-* Known limitations
-* Remaining requirements
-* Next implementation phase
-* Phase checkpoints
-* Final backend completion criteria
-
----
-
-# 2. Project Objective
-
-VELoop Rewards requires a secure backend system for managing:
-
-* User accounts
-* Wallet balances
-* VES
-* SVES
-* Gems
-* Tokens
-* Spins
-* Wallet transactions
-* Rewards and deductions
-* Payout configurations
-* Withdrawals
-* Withdrawal lifecycle
-* Payout details
-* Balance validation
-* Eligibility
-* Security
-* Idempotency
-* Rate limiting
-* Audit records
-* Financial consistency
-* Future scalability
-
-The most important architectural rule is:
-
-> **The backend is the single source of truth for all financial and reward-related operations.**
-
-The frontend must never be trusted to calculate or control:
-
-* Wallet balance
-* Required VES
-* Withdrawal amount
-* Reward amount
-* Payout amount
-* Payout eligibility
-* Transaction status
-* Withdrawal status
-* Payout configuration
-
----
-
-# 3. Important Development Rule
-
-## DO NOT restart the project from scratch.
-
-The core wallet and withdrawal backend has already been implemented.
-
-The next developer should **continue from the existing implementation** and complete the remaining requirements.
-
-Do not replace the current wallet architecture unless a concrete requirement or verified defect requires it.
-
----
-
-# 4. Current Technology Stack
-
-| Component             | Technology                         |
-| --------------------- | ---------------------------------- |
-| Language              | Java 21                            |
-| Framework             | Spring Boot 3.5.16                 |
-| Security              | Spring Security                    |
-| Authentication        | JWT                                |
-| JWT Library           | JJWT 0.12.6                        |
-| Password Hashing      | BCrypt                             |
-| ORM                   | Spring Data JPA / Hibernate        |
-| Database              | MySQL                              |
-| Migration             | Flyway                             |
-| Validation            | Jakarta Bean Validation            |
-| API Documentation     | Springdoc OpenAPI                  |
-| Monitoring Foundation | Spring Boot Actuator               |
-| Build Tool            | Maven                              |
-| Testing               | JUnit + Spring Boot Test + MockMvc |
-
----
-
-# 5. Current Package Architecture
-
-The backend is organized by domain.
-
-```text
-src/main/java/com/veloop/rewards/
-
-├── audit/
-├── auth/
-├── common/
-├── config/
-├── idempotency/
-├── payout/
-├── security/
-├── user/
-├── wallet/
-└── withdrawal/
-```
-
-### Domain responsibilities
-
-| Package       | Responsibility                                        |
-| ------------- | ----------------------------------------------------- |
-| `auth`        | Registration, login and authentication                |
-| `security`    | JWT, Spring Security and authorization                |
-| `user`        | User entity and user persistence                      |
-| `wallet`      | Wallet balances and wallet ledger                     |
-| `withdrawal`  | Withdrawal creation and lifecycle                     |
-| `payout`      | Payout methods and payout options                     |
-| `idempotency` | Duplicate request protection                          |
-| `audit`       | Financial/security audit records                      |
-| `common`      | Shared exceptions, utilities and common functionality |
-| `config`      | Application/security/OpenAPI configuration            |
-
----
-
-# 6. Current Architecture
-
-The current logical architecture is:
-
-```text
-                    CLIENT
-                      │
-                      ▼
-              REST API / Controller
-                      │
-                      ▼
-              Authentication /
-               Authorization
-                      │
-                      ▼
-                  Service
-                     Layer
-                      │
-          ┌───────────┼────────────┐
-          │           │            │
-          ▼           ▼            ▼
-       Wallet      Withdrawal    Payout
-       Service      Service    Configuration
-          │           │            │
-          └───────────┼────────────┘
-                      │
-                      ▼
-                 Transaction
-                   Boundary
-                      │
-          ┌───────────┼─────────────┐
-          │           │             │
-          ▼           ▼             ▼
-       MySQL       Ledger        Audit Log
-```
-
----
-
-# 7. Authentication
-
-Authentication is already implemented.
-
-## Registration
-
-```http
-POST /api/auth/register
-```
-
-Registration currently:
-
-1. Normalizes email
-2. Checks duplicate email
-3. Hashes password using BCrypt
-4. Creates a USER account
-5. Creates the user's wallet
-
----
-
-## Login
-
-```http
-POST /api/auth/login
-```
-
-Login returns a JWT.
-
-JWT contains authenticated user information including:
-
-* User ID
-* Email
-* Role
-* Issued timestamp
-* Expiration
-
----
-
-## Current User
-
-```http
-GET /api/auth/me
-```
-
-Returns the currently authenticated user's information.
-
----
-
-# 8. Security Model
-
-Spring Security is configured as a stateless security system.
-
-Current behavior:
-
-```text
-Public
- ├── Register
- ├── Login
- └── API documentation
-
-Authenticated
- └── Protected APIs
-
-ADMIN
- └── Administrative withdrawal operations
-```
-
-CSRF/form login/basic authentication are disabled because the backend uses stateless JWT authentication.
-
-Method-level authorization is enabled.
-
----
-
-# 9. User Model
-
-The User entity currently contains:
-
-```text
-id
-email
-passwordHash
-name
-role
-accountStatus
-verified
-level
-currentRank
-createdAt
-updatedAt
-```
-
-Email is unique.
-
-Important user states include:
-
-```text
-ACTIVE
-```
-
-and verification status is used by withdrawal eligibility.
-
----
-
-# 10. Wallet Model
-
-Each user has one wallet.
-
-Wallet currently contains:
-
-```text
-id
-user
-ves
-sves
-gems
-tokens
-spins
-withdrawnVes
-version
-```
-
-The wallet uses optimistic locking:
-
-```java
-@Version
-```
-
-This is important.
-
-### DO NOT remove optimistic locking.
-
-Wallet balances are financial/reward state and must be protected against concurrent modifications.
-
----
-
-# 11. Supported Currencies
-
-The current currency enum contains:
-
-```text
-VES
-SVES
-GEMS
-TOKENS
-SPINS
-```
-
-All balances are stored and controlled by the backend.
-
----
-
-# 12. Wallet APIs Already Implemented
-
-## Wallet
-
-```http
-GET /api/wallet
-```
-
-Returns the authenticated user's wallet.
-
----
-
-## Wallet Summary
-
-```http
-GET /api/wallet/summary
-```
-
-Returns wallet summary information.
-
----
-
-## Transaction History
-
-```http
-GET /api/wallet/transactions?page=1&limit=20
-```
-
-Transaction history is paginated.
-
-Maximum page size is restricted.
-
-Transactions are returned in descending creation-time order.
-
----
-
-## Wallet Credit
-
-```http
-POST /api/wallet/credit
-```
-
-Protected wallet mutation endpoint.
-
----
-
-## Wallet Debit
-
-```http
-POST /api/wallet/debit
-```
-
-Protected wallet mutation endpoint.
-
----
-
-# 13. Wallet Mutation Rules
-
-Wallet operations must follow:
-
-```text
-Request
-   ↓
-Authentication
-   ↓
-Authorization
-   ↓
-Input Validation
-   ↓
-Validate Amount
-   ↓
-Validate Balance
-   ↓
-Update Wallet
-   ↓
-Create Ledger Transaction
-   ↓
-Create Audit Record
-   ↓
-Commit
-```
-
-Wallet mutation service methods are transactional.
-
----
-
-# 14. Wallet Ledger
-
-The ledger is a core part of the system.
-
-Every wallet balance change must have a corresponding transaction record.
-
-The `WalletTransaction` model contains:
-
-```text
-transactionId
-userId
-walletId
-currency
-transactionType
-amount
-balanceBefore
-balanceAfter
-source
-referenceId
-status
-description
-metadata
-createdAt
-```
-
----
-
-# 15. Transaction Types
-
-## Credits
-
-```text
-REWARD
-BONUS
-REFERRAL
-DAILY_REWARD
-AD_REWARD
-GAME_REWARD
-ADMIN_CREDIT
-EXCHANGE_CREDIT
-```
-
-## Debits
-
-```text
-WITHDRAWAL
-EXCHANGE_DEBIT
-ADMIN_DEBIT
-CORRECTION
-```
-
----
-
-# 16. Transaction Statuses
-
-```text
-PENDING
-COMPLETED
-FAILED
-REVERSED
-```
-
----
-
-# 17. Wallet Accounting Rule
-
-The wallet must always remain mathematically consistent.
-
-```text
-Current Balance
-=
-Opening Balance
-+ Credits
-- Debits
-± Corrections
-```
-
-The ledger is the historical source used to verify this relationship.
-
----
-
-# 18. Wallet Concurrency
-
-The current implementation uses:
-
-* Database transactions
-* JPA optimistic locking
-* `@Version`
-* Concurrency tests
-* Atomic wallet mutations
-
-The intended behavior is:
-
-```text
-Concurrent Request A ──┐
-                       ├── Wallet Version Check
-Concurrent Request B ──┘
-```
-
-Only valid transactions should commit.
-
-### Important
-
-Do not replace this with simple:
-
-```text
-read balance
-↓
-subtract
-↓
-save
-```
-
-without concurrency protection.
-
-That would create a race-condition risk.
-
----
-
-# 19. Payout Architecture
-
-The payout system is backend controlled.
-
-Current entities:
-
-```text
-PayoutMethod
-PayoutOption
-```
-
-A payout option contains:
-
-```text
-id
-method
-payoutAmount
-currency
-currencyAmount
-active
-createdAt
-updatedAt
-```
-
-The client must select a valid backend-configured option.
-
-The client cannot send an arbitrary:
-
-```text
-requiredVes
-payoutAmount
-```
-
-and expect the backend to trust it.
-
----
-
-# 20. Current Payout Methods
-
-Current configuration contains:
-
-```text
-UPI                  ACTIVE
-Amazon Gift Card     ACTIVE
-Google Play Card     ACTIVE
-PayPal               INACTIVE
-```
-
----
-
-# 21. Current UPI Configuration
-
-The currently configured UPI redemption values are:
-
-| Payout Amount | Required VES |
-| ------------: | -----------: |
-|           ₹10 |        2,400 |
-|           ₹25 |        5,800 |
-|           ₹50 |       10,000 |
-|          ₹100 |       19,500 |
-|          ₹150 |       28,500 |
-|          ₹300 |       52,500 |
-|          ₹500 |       80,500 |
-|        ₹1,000 |      150,000 |
-
-These values belong to backend configuration.
-
----
-
-# 22. Payout Configuration API
-
-Current configuration endpoint:
-
-```http
-GET /api/payouts/configuration
-```
-
-The backend resolves the selected payout option and determines:
-
-```text
-Payout Method
-Payout Amount
-Currency
-Required Currency Amount
-Active/Inactive
-```
-
----
-
-# 23. Payout Detail Validation
-
-A dedicated:
-
-```text
-PayoutDetailValidator
-```
-
-exists.
-
-Current implementation has explicit UPI validation.
-
-Other payout methods require additional method-specific validation during the next phase.
-
----
-
-# 24. Withdrawal Model
-
-The Withdrawal entity contains:
-
-```text
-withdrawalId
-user
-payoutMethod
-payoutOption
-currency
-currencyAmount
-payoutAmount
-payoutDetails
-status
-rejectionReason
-reviewNote
-transaction
-requestedAt
-processedAt
-createdAt
-updatedAt
-```
-
----
-
-# 25. Withdrawal Creation
-
-Current endpoint:
-
-```http
-POST /api/withdrawals
-```
-
-The client submits:
-
-```text
-payoutMethodId
-payoutOptionId
-payoutDetails
-```
-
-The backend then:
-
-1. Authenticates user
-2. Checks idempotency
-3. Resolves payout method
-4. Resolves payout option
-5. Resolves required VES from database
-6. Validates payout details
-7. Checks user eligibility
-8. Checks wallet balance
-9. Deducts VES
-10. Creates ledger transaction
-11. Creates withdrawal
-12. Creates audit record
-
----
-
-# 26. Current Withdrawal Strategy
-
-The project currently uses:
-
-> **Immediate Deduction**
-
-Meaning:
-
-```text
-Withdrawal Created
-       ↓
-VES Deducted Immediately
-       ↓
-Ledger Transaction Created
-       ↓
-Withdrawal = PENDING
-```
-
-The system does not currently use a separate wallet-hold/reservation balance.
-
-This decision should remain consistent throughout the project unless deliberately redesigned.
-
----
-
-# 27. Withdrawal Statuses
-
-Current statuses:
-
-```text
-PENDING
-PROCESSING
-APPROVED
-REJECTED
-CANCELLED
-```
-
----
-
-# 28. Withdrawal Lifecycle
-
-Normal flow:
-
-```text
-PENDING
-   ↓
-PROCESSING
-   ↓
-APPROVED
-```
-
-Cancellation:
-
-```text
-PENDING
-   ↓
-CANCELLED
-   ↓
-VES Reversal
-```
-
-Rejection:
-
-```text
-PENDING / PROCESSING
-   ↓
-REJECTED
-   ↓
-VES Reversal
-```
-
----
-
-# 29. Withdrawal Reversal
-
-When a withdrawal is rejected or cancelled, the original deducted amount is used to create a correction credit.
-
-The correction transaction uses:
-
-```text
-Transaction Type:
-CORRECTION
-```
-
-and an appropriate withdrawal-related source/reference.
-
-### Important
-
-Never simply modify or delete the original withdrawal ledger transaction.
-
-The correction must remain auditable.
-
----
-
-# 30. Withdrawal Authorization
-
-Users can access only their own withdrawals.
-
-Administrative lifecycle operations require:
-
-```text
-ROLE_ADMIN
-```
-
-Current administrative operations include:
-
-```http
-PATCH /api/withdrawals/{id}/processing
-PATCH /api/withdrawals/{id}/approve
-PATCH /api/withdrawals/{id}/reject
-```
-
----
-
-# 31. Withdrawal Eligibility
-
-A dedicated:
-
-```text
-WithdrawalEligibilityService
-```
-
-currently validates conditions including:
-
-* User exists
-* Account is active
-* User is verified
-
-Additional eligibility rules should be added in the next phase where required by the final business requirements.
-
----
-
-# 32. Idempotency
-
-Withdrawal creation requires:
-
-```http
-Idempotency-Key
-```
-
-Missing key is rejected.
-
-The system stores:
-
-```text
-user
-idempotencyKey
-requestFingerprint
-withdrawal
-```
-
-The request fingerprint is based on the withdrawal request data.
-
----
-
-# 33. Idempotency Behavior
-
-### Same user + same key + same request
-
-Return/reuse the existing withdrawal.
-
-### Same user + same key + different request
-
-Reject with an idempotency conflict.
-
-This prevents:
-
-```text
-Double click
-Network retry
-Client retry
-Repeated submission
-```
-
-from creating multiple withdrawals.
-
----
-
-# 34. Rate Limiting
-
-Rate limiting is already implemented.
-
-### Algorithm
-
-Current implementation:
-
-> **In-memory fixed-window counter**
-
-The service uses in-memory concurrent state and synchronized checking.
-
----
-
-## Current Limits
-
-| Operation           |           Limit |
-| ------------------- | --------------: |
-| Login               |  5 / 60 seconds |
-| Withdrawal Creation |  5 / 60 seconds |
-| Wallet Mutation     | 20 / 60 seconds |
-| Withdrawal Mutation | 20 / 60 seconds |
-
-Rate limiting uses:
-
-* IP-based identification for applicable unauthenticated endpoints
-* User-based identification for applicable authenticated sensitive endpoints
-
-When exceeded:
-
-```http
-429 TOO MANY REQUESTS
-```
-
-A `Retry-After` response value is also provided.
-
----
-
-# 35. Important Rate Limiting Limitation
-
-The current implementation is **not distributed**.
-
-Example:
-
-```text
-              Load Balancer
-                    │
-          ┌─────────┴─────────┐
-          ▼                   ▼
-     Backend #1           Backend #2
-       Counter               Counter
-         A                     B
-```
-
-Each server has its own counter.
-
-Therefore, the next phase must introduce distributed rate limiting, most likely using Redis.
-
-Do not consider the current rate limiter equivalent to production distributed rate limiting.
-
----
-
-# 36. Audit Logging
-
-Audit infrastructure already exists.
-
-Important events include:
-
-```text
-WALLET_CREDIT
-WALLET_DEBIT
-WITHDRAWAL_CREATED
-WITHDRAWAL_PROCESSING
-WITHDRAWAL_APPROVED
-WITHDRAWAL_REJECTED
-WITHDRAWAL_CANCELLED
-```
-
-Audit data should remain append-oriented and traceable.
-
----
-
-# 37. Database Architecture
-
-Current migration sequence:
-
-```text
-V1  users
-V2  wallets
-V3  wallet_transactions
-V4  payout_configuration
-V5  withdrawals
-V6  withdrawal_idempotency
-V7  withdrawal_audit
-V8  audit_log
-```
-
-Hibernate schema auto-generation is disabled.
-
-Flyway owns schema evolution.
-
----
-
-# 38. Important Database Indexes
-
-Indexes currently exist around important lookup fields including:
-
-```text
-user_id
-wallet_id
-transaction_id
-reference_id
-created_at
-status
-withdrawal_id
-payout_option
-audit actor
-audit target
-idempotency key
-```
-
-These indexes should be preserved and reviewed before introducing large-scale features.
-
----
-
-# 39. Error Handling
-
-The project has centralized REST exception handling.
-
-Important business exceptions include:
-
-```text
-AuthenticationFailedException
-BusinessException
-InsufficientBalanceException
-InvalidAmountException
-InvalidWithdrawalRequestException
-InvalidWithdrawalStateException
-IdempotencyConflictException
-WithdrawalConcurrencyException
-WithdrawalNotFoundException
-WithdrawalOwnershipException
-WithdrawalTransactionException
-```
-
-The next phase should verify that sensitive internal details are not exposed to clients.
-
----
-
-# 40. Current Test Coverage
-
-The repository already contains tests covering:
-
-### Wallet
-
-```text
-WalletServiceIntegrationTest
-WalletAtomicityIntegrationTest
-WalletConcurrencyIntegrationTest
-WalletConsistencyIntegrationTest
-WalletIsolationIntegrationTest
-WalletJwtIsolationIntegrationTest
-WalletCreditApiIntegrationTest
-WalletDebitApiIntegrationTest
-WalletSummaryApiIntegrationTest
-WalletTransactionApiIntegrationTest
-WalletTransactionHistoryIntegrationTest
-WalletTransactionRepositoryTest
-WalletTransactionServiceTest
-```
-
-### Withdrawal
-
-```text
-WithdrawalServiceIntegrationTest
-WithdrawalConcurrencyIntegrationTest
-WithdrawalApiIntegrationTest
-WithdrawalEligibilityServiceTest
-```
-
-### Payout
-
-```text
-PayoutConfigurationApiIntegrationTest
-PayoutDetailValidatorTest
-```
-
-### Rate Limiting
-
-```text
-RateLimitFilterTest
-RateLimitServiceTest
-```
-
----
-
-# 41. Existing Test Evidence
-
-Existing Surefire test reports in the project show:
-
-```text
-Tests:     100
-Failures:  0
-Errors:    0
-Skipped:   0
-```
-
-This is existing repository evidence.
-
-Before final completion, the complete suite must be executed again in the actual development environment.
-
----
-
-# 42. Current Backend Completion State
-
-The current backend is approximately:
-
-> **~90% complete against the full backend requirement scope.**
-
-This is **not** a claim that every production-level requirement is complete.
-
-The core functionality is substantially implemented.
-
-The remaining work is primarily around:
-
-```text
-Production Configuration
-Payout Completeness
-Financial Reconciliation
-Fraud / Abuse Protection
-Distributed Rate Limiting
-Payout Processing Architecture
-Monitoring
-Documentation
-Final Security Audit
-Final Requirement Verification
-```
-
----
-
-# 43. Known Gaps
-
-These are the known areas that must be addressed.
-
-## GAP-01 — Environment Configuration
-
-Current development configuration contains development-oriented credentials/fallback values.
-
-Required:
-
-```text
-.env.example
-Environment-based secrets
-No committed production credentials
-No fallback production JWT secret
-```
-
----
-
-## GAP-02 — Payout Configuration Completeness
-
-Amazon and Google payout methods exist, but their complete option configuration still needs to be defined.
-
-Method-specific validation also needs to be completed.
-
----
-
-## GAP-03 — Financial Reconciliation
-
-A dedicated reconciliation process is not yet complete.
-
-Required:
-
-```text
-Ledger total
-      ↓
-Expected balance
-      ↓
-Compare with wallet balance
-      ↓
-Detect mismatch
-      ↓
-Audit/report mismatch
-```
-
----
-
-## GAP-04 — Fraud / Abuse Detection
-
-Basic security exists, but advanced financial abuse detection is not yet complete.
-
-Required future controls include:
-
-* Withdrawal frequency analysis
-* Suspicious activity detection
-* Repeated failed request detection
-* Abnormal wallet activity
-* Account-level restrictions
-* Administrative review flags
-
----
-
-## GAP-05 — Distributed Rate Limiting
-
-Current:
-
-```text
-In-memory fixed window
-```
-
-Target:
-
-```text
-Redis / distributed shared state
-```
-
----
-
-## GAP-06 — Payout Processing
-
-Current backend manages the withdrawal lifecycle but does not yet implement a complete asynchronous external payout-processing architecture.
-
-Future:
-
-```text
-Withdrawal
-    ↓
-Queue
-    ↓
-Payout Worker
-    ↓
-Provider
-    ↓
-Result
-    ↓
-Withdrawal Status
-```
-
----
-
-## GAP-07 — Monitoring
-
-Actuator exists, but complete financial/operational observability still needs to be implemented.
-
----
-
-## GAP-08 — Documentation
-
-Existing API documentation needs to be synchronized with the current source implementation.
-
-Database and architecture documentation should also be finalized.
-
----
-
-## GAP-09 — Withdrawal Accounting Review
-
-The `withdrawnVes` wallet field exists.
-
-Its relationship with the actual withdrawal ledger should be reviewed and explicitly defined.
-
-Do not assume it is correct without verifying its update behavior.
-
----
-
-# 44. Important Point Requiring Verification
-
-The wallet credit/debit request DTO contains a `userId`.
-
-Before changing this behavior, verify whether the controller/service intentionally derives the target user from the authenticated principal or whether administrative credit/debit operations are intended to target another user.
-
-This must be resolved during the final security audit.
-
-Do not blindly change it without understanding the intended authorization model.
-
----
-
-# 45. NEXT PHASE
-
-# `BACKEND-PHASE-02`
-
-## Production Hardening & Full Requirement Completion
-
-This is the phase to implement next.
-
-The goal is to move from:
-
-```text
-CORE BACKEND FUNCTIONAL
-```
-
-to:
-
-```text
-FULL BACKEND REQUIREMENTS COMPLETE
-```
-
----
-
-# 46. Phase 02 — Implementation Order
-
-Follow this order.
-
-Do not randomly implement features.
-
-```text
-02.1 Configuration Hardening
-        ↓
-02.2 Payout Configuration Completion
-        ↓
-02.3 Wallet / Withdrawal Accounting Review
-        ↓
-02.4 Distributed Rate Limiting
-        ↓
-02.5 Fraud & Abuse Protection
-        ↓
-02.6 Financial Reconciliation
-        ↓
-02.7 Payout Processing Architecture
-        ↓
-02.8 Monitoring & Observability
-        ↓
-02.9 API Documentation
-        ↓
-02.10 Architecture / DB Documentation
-        ↓
-02.11 Full Security Audit
-        ↓
-02.12 Full Test & Requirement Audit
-        ↓
-BACKEND-COMPLETE-100%
-```
-
----
-
-# 47. Phase 02.1 — Configuration Hardening
-
-### Implement
-
-* [ ] Create `.env.example`
-* [ ] Move DB credentials to environment configuration
-* [ ] Move JWT secret to environment configuration
-* [ ] Remove fallback JWT secret
-* [ ] Remove hard-coded development credentials where inappropriate
-* [ ] Review CORS
-* [ ] Review Actuator exposure
-* [ ] Review production logging
-* [ ] Review error responses
-
-### Completion checkpoint
-
-```text
-CHECKPOINT-02.1
-CONFIGURATION-HARDENED
-```
-
----
-
-# 48. Phase 02.2 — Payout Configuration Completion
-
-### Implement
-
-* [ ] Complete Amazon Gift Card options
-* [ ] Complete Google Play Gift Card options
-* [ ] Define PayPal behavior
-* [ ] Add method-specific validation
-* [ ] Validate active/inactive configuration
-* [ ] Validate currency
-* [ ] Validate required currency amount
-* [ ] Add tests for every payout method
-
-### Completion checkpoint
-
-```text
-CHECKPOINT-02.2
-PAYOUT-CONFIGURATION-COMPLETE
-```
-
----
-
-# 49. Phase 02.3 — Wallet & Withdrawal Accounting Review
-
-### Implement
-
-* [ ] Verify every debit creates a ledger record
-* [ ] Verify every credit creates a ledger record
-* [ ] Verify rejection reversal
-* [ ] Verify cancellation reversal
-* [ ] Verify correction transactions
-* [ ] Review `withdrawnVes`
-* [ ] Verify balance-after values
-* [ ] Verify reference IDs
-* [ ] Verify transaction status transitions
-* [ ] Add missing consistency tests
-
-### Completion checkpoint
-
-```text
-CHECKPOINT-02.3
-WALLET-ACCOUNTING-COMPLETE
-```
-
----
-
-# 50. Phase 02.4 — Distributed Rate Limiting
-
-Replace or extend current in-memory rate limiting.
-
-### Target
-
-```text
-Application Instances
-        │
-        ▼
-      Redis
-        │
-        ▼
-Shared Rate Limit State
-```
-
-### Implement
-
-* [ ] Redis integration
-* [ ] Distributed counters
-* [ ] User-based limits
-* [ ] IP-based limits
-* [ ] Retry-After support
-* [ ] Redis failure strategy
-* [ ] Distributed tests
-
-### Completion checkpoint
-
-```text
-CHECKPOINT-02.4
-DISTRIBUTED-RATE-LIMITING-COMPLETE
-```
-
----
-
-# 51. Phase 02.5 — Fraud & Abuse Protection
-
-### Implement
-
-At minimum evaluate:
-
-```text
-Repeated withdrawals
-Rapid withdrawals
-Repeated failed requests
-Suspicious account activity
-Unusual wallet activity
-Multiple suspicious payout requests
-```
-
-Add:
-
-* [ ] Fraud/risk service
-* [ ] Risk rules
-* [ ] Review flags
-* [ ] Audit events
-* [ ] Administrative visibility
-* [ ] Tests
-
-### Completion checkpoint
-
-```text
-CHECKPOINT-02.5
-FRAUD-PROTECTION-COMPLETE
-```
-
----
-
-# 52. Phase 02.6 — Financial Reconciliation
-
-Implement a reconciliation service.
-
-### Required logic
-
-```text
-Wallet Balance
-       │
-       ▼
-Compare
-       ▲
-       │
-Ledger-Derived Balance
-```
-
-If different:
-
-```text
-RECONCILIATION FAILURE
-```
-
-must be recorded.
-
-### Implement
-
-* [ ] Reconciliation service
-* [ ] Expected balance calculation
-* [ ] Wallet vs ledger comparison
-* [ ] Mismatch detection
-* [ ] Audit record
-* [ ] Administrative report/endpoint if appropriate
-* [ ] Automated tests
-
-### Completion checkpoint
-
-```text
-CHECKPOINT-02.6
-FINANCIAL-RECONCILIATION-COMPLETE
-```
-
----
-
-# 53. Phase 02.7 — Payout Processing
-
-Introduce asynchronous processing architecture.
-
-### Target
-
-```text
-POST /withdrawals
-        ↓
-Transaction
-        ↓
-PENDING
-        ↓
-Queue
-        ↓
-Payout Worker
-        ↓
-External Provider
-        ↓
-Result
-        ↓
-APPROVED / REJECTED
-```
-
-### Implement
-
-* [ ] Queue abstraction
-* [ ] Payout job
-* [ ] Worker
-* [ ] Retry
-* [ ] Failure handling
-* [ ] Idempotent processing
-* [ ] Provider abstraction
-* [ ] Audit events
-* [ ] Tests
-
-### Important
-
-Do not remove the existing withdrawal transaction safety while introducing asynchronous processing.
-
-### Completion checkpoint
-
-```text
-CHECKPOINT-02.7
-PAYOUT-PROCESSING-COMPLETE
-```
-
----
-
-# 54. Phase 02.8 — Monitoring & Observability
-
-### Implement
-
-* [ ] Health checks
-* [ ] Application metrics
-* [ ] Wallet metrics
-* [ ] Withdrawal metrics
-* [ ] Rate-limit metrics
-* [ ] Error metrics
-* [ ] Reconciliation metrics
-* [ ] Structured logs
-* [ ] Request/correlation IDs
-
-Useful metrics:
-
-```text
-wallet.credit.success
-wallet.credit.failure
-wallet.debit.success
-wallet.debit.failure
-
-withdrawal.created
-withdrawal.processing
-withdrawal.approved
-withdrawal.rejected
-withdrawal.cancelled
-
-rate_limit.blocked
-
-reconciliation.success
-reconciliation.failure
-```
-
-### Completion checkpoint
-
-```text
-CHECKPOINT-02.8
-OBSERVABILITY-COMPLETE
-```
-
----
-
-# 55. Phase 02.9 — API Documentation
-
-Update:
-
-```text
-API_DOCUMENTATION.md
-```
-
-It must match the actual source code.
-
-Document:
-
-* Endpoint
-* HTTP method
-* Authentication
-* Authorization
-* Request
-* Response
-* Validation
-* Errors
-* Pagination
-* Idempotency
-* Rate limits
-* Withdrawal lifecycle
-
-### Completion checkpoint
-
-```text
-CHECKPOINT-02.9
-API-DOCUMENTATION-COMPLETE
-```
-
----
-
-# 56. Phase 02.10 — Architecture Documentation
-
-Create/finalize:
+# VELoop Rewards Wallet System
+
+A production-oriented **Rewards Wallet and Withdrawal Backend** built with Spring Boot. The system manages user wallets, multi-currency reward balances, wallet ledger transactions, withdrawals, payout configuration, fraud and abuse detection, idempotency, rate limiting, payout processing, audit logging, observability, and financial reconciliation.
+
+The backend is designed around the principle that the **server and database are the source of truth for all wallet and withdrawal operations**.
+
+---
+
+## 1. Project Overview
+
+### VELoop Rewards Wallet System
+
+VELoop is a backend system for managing reward balances and converting those rewards into configured payout options.
+
+The system provides:
+
+- User registration and authentication
+- JWT-based authentication
+- Role-based authorization
+- Automatic wallet creation for new users
+- Multi-currency reward wallets
+- Wallet credit and debit operations
+- Immutable-style wallet transaction ledger
+- Withdrawal creation and lifecycle management
+- Configurable payout methods and payout options
+- Withdrawal idempotency
+- Fraud and abuse risk detection
+- Dynamic fraud risk scoring
+- Withdrawal audit history
+- General audit logging
+- Database-backed payout queue
+- Payout provider abstraction
+- Payout retry handling
+- Distributed rate limiting using Redis
+- Correlation IDs and application metrics
+- Financial reconciliation
+- Swagger/OpenAPI documentation
+- Database versioning using Flyway
+
+---
+
+# 2. Architecture
+
+The application follows a layered Spring Boot architecture.
+
+```text
+Client
+  |
+  v
+Spring Security
+  |
+  +---- JWT Authentication
+  |
+  +---- Rate Limiting
+  |
+  v
+REST Controllers
+  |
+  v
+Service Layer
+  |
+  +---- Authentication
+  +---- Wallet
+  +---- Withdrawals
+  +---- Payout Configuration
+  +---- Fraud Detection
+  +---- Idempotency
+  +---- Payout Processing
+  +---- Reconciliation
+  +---- Audit
+  |
+  v
+Spring Data JPA
+  |
+  v
+MySQL
+  |
+  +---- Wallets
+  +---- Wallet Transactions
+  +---- Withdrawals
+  +---- Payout Configuration
+  +---- Audit Records
+  +---- Fraud Risk Events
+  +---- Payout Jobs
+  |
+  +----------------------+
+                         |
+                         v
+                       Redis
+                  Rate Limiting
+```
+
+Detailed architecture documentation is available in:
 
 ```text
 docs/
@@ -1641,463 +105,1973 @@ docs/
 └── testing.md
 ```
 
-These documents should describe the actual implementation.
+---
 
-### Completion checkpoint
+# 3. Technology Stack
+
+The technologies below are the technologies actually used by the project.
+
+| Technology | Purpose |
+|---|---|
+| Java 21 | Application language |
+| Spring Boot 3.5.16 | Backend framework |
+| Spring Web | REST APIs |
+| Spring Data JPA | Persistence layer |
+| Hibernate | ORM |
+| Spring Security | Authentication and authorization |
+| JJWT 0.12.6 | JWT creation and validation |
+| BCrypt | Password hashing |
+| MySQL | Primary relational database |
+| Flyway | Database migrations |
+| Redis | Distributed rate limiting |
+| Spring Boot Actuator | Health and metrics |
+| SpringDoc OpenAPI 2.9.1 | Swagger/OpenAPI documentation |
+| Lombok | Boilerplate reduction |
+| Maven | Build and dependency management |
+| JUnit / Spring Boot Test | Automated testing |
+
+---
+
+# 4. Project Structure
 
 ```text
-CHECKPOINT-02.10
-ARCHITECTURE-DOCUMENTATION-COMPLETE
+src/
+├── main/
+│   ├── java/com/veloop/rewards/
+│   │
+│   ├── auth/
+│   │   ├── controller/
+│   │   ├── dto/
+│   │   ├── entity/
+│   │   ├── repository/
+│   │   └── service/
+│   │
+│   ├── audit/
+│   │   ├── entity/
+│   │   ├── repository/
+│   │   └── service/
+│   │
+│   ├── common/
+│   │   ├── exception/
+│   │   └── response/
+│   │
+│   ├── config/
+│   │
+│   ├── fraud/
+│   │   ├── config/
+│   │   ├── entity/
+│   │   ├── enums/
+│   │   ├── exception/
+│   │   ├── repository/
+│   │   ├── rule/
+│   │   └── service/
+│   │
+│   ├── idempotency/
+│   │
+│   ├── observability/
+│   │
+│   ├── payout/
+│   │
+│   ├── payoutprocessing/
+│   │
+│   ├── reconciliation/
+│   │
+│   ├── security/
+│   │
+│   ├── user/
+│   │
+│   ├── wallet/
+│   │
+│   └── withdrawal/
+│
+└── main/resources/
+    ├── application.properties
+    └── db/
+        └── migration/
+            ├── V1__create_users.sql
+            ├── V2__create_wallets.sql
+            ├── V3__create_wallet_transactions.sql
+            ├── V4__create_payout_configuration.sql
+            ├── V5__create_withdrawals.sql
+            ├── V6__create_withdrawal_idempotency.sql
+            ├── V7__create_withdrawal_audit.sql
+            ├── V8__create_audit_log.sql
+            ├── V9__create_fraud_risk_events.sql
+            ├── V10__create_authentication_attempts.sql
+            ├── V11__add_explanation_to_fraud_risk_events.sql
+            └── V12__create_payout_jobs.sql
 ```
 
 ---
 
-# 57. Phase 02.11 — Final Security Audit
+# 5. Prerequisites
 
-Check every sensitive operation.
+Install:
 
-### Authentication
+- Java 21
+- MySQL 8.x
+- Redis 6.x/7.x
+- Git
 
-* [ ] JWT validation
-* [ ] Expiration
-* [ ] Invalid token handling
-* [ ] Password hashing
+Verify:
 
-### Authorization
+```bash
+java -version
+git --version
+```
 
-* [ ] USER access
-* [ ] ADMIN access
-* [ ] Ownership
-* [ ] Cross-user access prevention
+The project uses Java 21.
 
-### Wallet
+---
 
-* [ ] No client-controlled balance
-* [ ] No negative balance
-* [ ] Atomic operations
-* [ ] Ledger consistency
-* [ ] Concurrency safety
+# 6. Setup
 
-### Withdrawal
+## Clone the repository
 
-* [ ] Client cannot choose arbitrary VES
-* [ ] Client cannot manipulate payout amount
-* [ ] Client cannot access another user's withdrawal
-* [ ] Duplicate request protection
-* [ ] Rate limiting
-* [ ] Eligibility
-* [ ] Reversal
-* [ ] Audit
+```bash
+git clone <YOUR_GITHUB_REPOSITORY_URL>
+cd veloop-rewards-backend
+```
 
-### Configuration
+## Configure environment variables
 
-* [ ] No secrets committed
-* [ ] Environment variables
-* [ ] Secure JWT configuration
-* [ ] Secure DB configuration
+Create a `.env` file from `.env.example`.
 
-### Completion checkpoint
+```bash
+cp .env.example .env
+```
+
+Configure the database, JWT, CORS, Redis, and other application settings.
+
+Example structure:
+
+```env
+SERVER_PORT=8080
+
+DB_URL=jdbc:mysql://localhost:3306/veloop_rewards
+DB_USERNAME=root
+DB_PASSWORD=your_password
+
+JWT_SECRET=your_base64_encoded_secret
+JWT_EXPIRATION=900000
+
+CORS_ALLOWED_ORIGINS=http://localhost:3000
+
+REDIS_HOST=localhost
+REDIS_PORT=6379
+REDIS_TIMEOUT=2000ms
+```
+
+Do not commit real secrets.
+
+---
+
+# 7. Database Setup
+
+Create the MySQL database:
+
+```sql
+CREATE DATABASE veloop_rewards;
+```
+
+Configure:
+
+```env
+DB_URL=jdbc:mysql://localhost:3306/veloop_rewards
+DB_USERNAME=root
+DB_PASSWORD=your_password
+```
+
+The application uses:
+
+```properties
+spring.jpa.hibernate.ddl-auto=none
+```
+
+Database schema creation and changes are managed by **Flyway migrations**.
+
+On application startup, Flyway applies migrations:
 
 ```text
-CHECKPOINT-02.11
-SECURITY-AUDIT-COMPLETE
+V1 → V2 → V3 → ... → V12
+```
+
+The migrations create:
+
+- users
+- wallets
+- wallet_transactions
+- payout_methods
+- payout_options
+- withdrawals
+- withdrawal_idempotency
+- withdrawal_audit
+- audit_log
+- fraud_risk_events
+- authentication_attempts
+- payout_jobs
+
+---
+
+# 8. Redis Setup
+
+Redis is used for distributed rate limiting.
+
+Start Redis locally:
+
+```bash
+redis-server
+```
+
+Default configuration:
+
+```env
+REDIS_HOST=localhost
+REDIS_PORT=6379
+REDIS_TIMEOUT=2000ms
+```
+
+The application uses Redis-backed rate limiting rather than keeping rate-limit state only inside one application instance.
+
+---
+
+# 9. Run the Application
+
+Using the Maven wrapper:
+
+### Windows
+
+```bash
+mvnw.cmd spring-boot:run
+```
+
+### Linux / macOS
+
+```bash
+./mvnw spring-boot:run
+```
+
+If the wrapper does not have execute permission:
+
+```bash
+chmod +x mvnw
+./mvnw spring-boot:run
+```
+
+The default server port is:
+
+```text
+8080
+```
+
+Application:
+
+```text
+http://localhost:8080
 ```
 
 ---
 
-# 58. Phase 02.12 — Final Requirement Audit
+# 10. API Documentation
 
-Compare the implementation against the original VELoop requirements one by one.
+The project uses SpringDoc OpenAPI.
 
-### Wallet
+Swagger UI:
 
-* [ ] Wallet exists for every user
-* [ ] All currencies supported
-* [ ] Backend controls balances
-* [ ] Credit implemented
-* [ ] Debit implemented
-* [ ] Ledger implemented
-* [ ] Balance validation implemented
-* [ ] Transaction history implemented
-* [ ] Summary implemented
+```text
+http://localhost:8080/swagger-ui.html
+```
 
-### Payout
+OpenAPI specification:
 
-* [ ] Payout methods
-* [ ] Payout options
-* [ ] Backend-controlled amounts
-* [ ] Active/inactive state
-* [ ] Method-specific validation
-* [ ] Eligibility
+```text
+http://localhost:8080/v3/api-docs
+```
 
-### Withdrawal
+---
 
-* [ ] Withdrawal creation
-* [ ] Balance check
-* [ ] Immediate deduction
-* [ ] Pending state
-* [ ] Processing
-* [ ] Approval
-* [ ] Rejection
-* [ ] Cancellation
-* [ ] Reversal
-* [ ] Audit
-* [ ] Idempotency
+# 11. Authentication APIs
+
+Base URL:
+
+```text
+/api/auth
+```
+
+## Register
+
+```http
+POST /api/auth/register
+```
+
+Creates a new user and automatically creates the user's wallet.
+
+Example:
+
+```json
+{
+  "name": "John Doe",
+  "email": "john@example.com",
+  "password": "Password@123"
+}
+```
+
+---
+
+## Login
+
+```http
+POST /api/auth/login
+```
+
+Authenticates the user and returns a signed JWT.
+
+Example:
+
+```json
+{
+  "email": "john@example.com",
+  "password": "Password@123"
+}
+```
+
+The returned token must be sent with protected requests:
+
+```http
+Authorization: Bearer <JWT>
+```
+
+---
+
+## Current User
+
+```http
+GET /api/auth/me
+```
+
+Requires authentication.
+
+---
+
+# 12. Wallet APIs
+
+Base URL:
+
+```text
+/api/wallet
+```
+
+## Get Wallet
+
+```http
+GET /api/wallet
+```
+
+Returns the authenticated user's wallet.
+
+---
+
+## Get Wallet Summary
+
+```http
+GET /api/wallet/summary
+```
+
+Returns wallet balances and transaction summary information.
+
+---
+
+## Get Transactions
+
+```http
+GET /api/wallet/transactions?page=1&limit=20
+```
+
+Returns paginated wallet transaction history.
+
+The maximum page size is limited to 100.
+
+---
+
+## Credit Wallet
+
+```http
+POST /api/wallet/credit
+```
+
+**ADMIN only.**
+
+Used to credit a user's wallet.
+
+The wallet service validates:
+
+- currency
+- amount
+- transaction type
+- balance transition
+- transaction creation
+- audit logging
+
+---
+
+## Debit Wallet
+
+```http
+POST /api/wallet/debit
+```
+
+**ADMIN only.**
+
+Used to debit a user's wallet.
+
+The service checks available balance before performing the debit.
+
+If the balance is insufficient, the operation is rejected.
+
+---
+
+# 13. Supported Wallet Currencies
+
+The wallet model supports multiple reward currencies:
+
+```text
+VES
+SVES
+GEMS
+TOKENS
+SPINS
+```
+
+The wallet stores an independent balance for each supported currency.
+
+For example:
+
+```text
+VES      → reward balance
+SVES     → secondary reward balance
+GEMS     → gems
+TOKENS   → tokens
+SPINS    → spins
+```
+
+---
+
+# 14. Wallet Accounting
+
+Every wallet mutation creates a wallet transaction.
+
+A transaction records:
+
+```text
+transaction_id
+user_id
+wallet_id
+currency
+transaction_type
+amount
+balance_before
+balance_after
+source
+reference_id
+status
+description
+metadata
+created_at
+```
+
+Example:
+
+```text
+Balance Before: 1000 VES
+Debit:           250 VES
+Balance After:   750 VES
+```
+
+The transaction history therefore provides a ledger trail for wallet movements.
+
+---
+
+# 15. Withdrawal APIs
+
+Base URL:
+
+```text
+/api/withdrawals
+```
+
+## Create Withdrawal
+
+```http
+POST /api/withdrawals
+```
+
+Requires:
+
+```http
+Authorization: Bearer <JWT>
+Idempotency-Key: <unique-key>
+```
+
+The client provides the selected payout method and payout option.
+
+The backend resolves the actual payout configuration and required wallet amount.
+
+The client cannot directly determine or override the wallet deduction amount.
+
+---
+
+## Get Withdrawal History
+
+```http
+GET /api/withdrawals?page=1&limit=20
+```
+
+Returns the authenticated user's withdrawal history.
+
+---
+
+## Get Withdrawal Details
+
+```http
+GET /api/withdrawals/{withdrawalId}
+```
+
+Returns a withdrawal belonging to the authenticated user.
+
+---
+
+## Mark Withdrawal as Processing
+
+```http
+PATCH /api/withdrawals/{withdrawalId}/processing
+```
+
+**ADMIN only.**
+
+Moves an eligible withdrawal into:
+
+```text
+PROCESSING
+```
+
+---
+
+## Approve Withdrawal
+
+```http
+PATCH /api/withdrawals/{withdrawalId}/approve
+```
+
+**ADMIN only.**
+
+Approves an eligible withdrawal.
+
+---
+
+## Reject Withdrawal
+
+```http
+PATCH /api/withdrawals/{withdrawalId}/reject
+```
+
+**ADMIN only.**
+
+Requires a rejection reason.
+
+Example:
+
+```text
+PATCH /api/withdrawals/{withdrawalId}/reject?rejectionReason=Invalid payout details
+```
+
+When a withdrawal that already deducted VES is rejected, the system reverses the deducted VES through a wallet correction transaction.
+
+---
+
+## Cancel Withdrawal
+
+```http
+PATCH /api/withdrawals/{withdrawalId}/cancel
+```
+
+**USER only.**
+
+Cancels an eligible withdrawal and reverses the previously deducted VES.
+
+---
+
+# 16. Withdrawal Lifecycle
+
+A withdrawal is managed through controlled state transitions.
+
+Typical flow:
+
+```text
+PENDING
+   |
+   +----> CANCELLED
+   |
+   +----> REJECTED
+   |
+   v
+PROCESSING
+   |
+   +----> REJECTED
+   |
+   v
+APPROVED
+```
+
+Payout processing is handled separately through the payout job mechanism.
+
+---
+
+# 17. Payout Configuration
+
+Base URL:
+
+```text
+/api/payouts
+```
+
+## Get Payout Configuration
+
+```http
+GET /api/payouts/configuration
+```
+
+Requires authentication.
+
+The API returns active payout methods and active payout options.
+
+The current database configuration includes payout methods such as:
+
+```text
+UPI
+Amazon Gift Card
+Google Play Gift Card
+PayPal
+```
+
+Only configured active options are exposed for selection.
+
+Payout validation is handled by:
+
+```text
+PayoutOptionValidator
+PayoutDetailValidator
+```
+
+This keeps payout configuration and validation on the backend rather than trusting client-provided payout values.
+
+---
+
+# 18. Payout Processing
+
+Approved withdrawals can be placed into a database-backed payout queue.
+
+Main components:
+
+```text
+PayoutQueue
+DatabasePayoutQueue
+PayoutJob
+PayoutWorker
+PayoutProvider
+PayoutProviderRegistry
+PayoutRetryPolicy
+```
+
+The system supports a provider abstraction so payout execution is separated from withdrawal creation.
+
+The payout job stores:
+
+```text
+withdrawal
+status
+attempt count
+next attempt time
+last error
+```
+
+The worker handles provider execution and retry/failure behavior.
+
+---
+
+# 19. Database Architecture
+
+The project uses **MySQL + Spring Data JPA + Flyway**.
+
+## Main Tables
+
+```text
+users
+   |
+   +---- wallets
+   |
+   +---- wallet_transactions
+   |
+   +---- withdrawals
+   |
+   +---- withdrawal_idempotency
+   |
+   +---- withdrawal_audit
+   |
+   +---- audit_log
+   |
+   +---- fraud_risk_events
+   |
+   +---- authentication_attempts
+
+payout_methods
+   |
+   +---- payout_options
+
+withdrawals
+   |
+   +---- payout_jobs
+```
+
+---
+
+# 20. Wallet
+
+The `wallets` table represents the current wallet state.
+
+It contains balances for:
+
+```text
+VES
+SVES
+GEMS
+TOKENS
+SPINS
+```
+
+Each user has one wallet.
+
+A unique constraint prevents multiple wallets from being created for the same user.
+
+---
+
+# 21. Ledger / Wallet Transactions
+
+The `wallet_transactions` table records wallet movements.
+
+Important fields include:
+
+```text
+transaction_id
+wallet_id
+currency
+transaction_type
+amount
+balance_before
+balance_after
+status
+source
+reference_id
+created_at
+```
+
+This provides an auditable transaction history and allows the system to derive wallet balances from completed transactions.
+
+---
+
+# 22. Withdrawals
+
+The `withdrawals` table stores:
+
+```text
+withdrawal_id
+user_id
+payout_method_id
+payout_option_id
+currency
+currency_amount
+payout_amount
+payout_details
+status
+rejection_reason
+review_note
+transaction_id
+requested_at
+processed_at
+created_at
+updated_at
+```
+
+A withdrawal is linked to the payout configuration and, where applicable, the wallet transaction that deducted the user's reward balance.
+
+---
+
+# 23. Payout
+
+Payout configuration is separated into:
+
+```text
+payout_methods
+payout_options
+```
+
+A method represents the payout channel.
+
+An option represents a configured payout amount/value.
+
+Example:
+
+```text
+UPI
+ ├── Option 1
+ ├── Option 2
+ ├── Option 3
+ └── ...
+```
+
+This allows payout values to be managed through database configuration instead of hardcoding them into withdrawal requests.
+
+---
+
+# 24. Audit
+
+The project maintains multiple audit mechanisms.
+
+## General Audit Log
+
+```text
+audit_log
+```
+
+Records actions such as wallet operations and reconciliation failures.
+
+It can store:
+
+```text
+actor
+target user
+target type
+action
+reference ID
+metadata
+timestamp
+```
+
+## Withdrawal Audit
+
+```text
+withdrawal_audit
+```
+
+Tracks withdrawal state transitions.
+
+It records:
+
+```text
+old status
+new status
+action
+performed by
+description
+timestamp
+```
+
+This makes important withdrawal lifecycle changes traceable.
+
+---
+
+# 25. Fraud & Abuse Protection
+
+The withdrawal flow includes a configurable fraud risk engine.
+
+The fraud system evaluates multiple independent rules.
+
+Implemented rules include:
+
+```text
+1. Rapid Withdrawal
+2. Repeated Withdrawal
+3. Repeated Failed Request
+4. Unusual Wallet Activity
+5. Suspicious Payout Request
+6. Suspicious Account Activity
+7. Multiple Suspicious Payout Pattern
+```
+
+The rules use authoritative wallet, withdrawal, authentication, and payout data rather than using previously generated fraud events as the primary source of truth.
+
+---
+
+# 26. Dynamic Fraud Risk Scoring
+
+Risk scoring is configurable through application properties.
+
+Each rule has configuration for:
+
+```text
+baseline
+time window
+maximum expected activity
+maximum rule score
+```
+
+The scoring model normalizes rule severity and applies nonlinear scoring.
+
+Conceptually:
+
+```text
+severity = normalized activity level
+
+ruleScore =
+    severity² × maxRuleScore
+```
+
+The overall fraud engine evaluates the triggered rules and produces a risk decision.
+
+Risk decisions can result in outcomes such as:
+
+```text
+ALLOW
+REVIEW
+BLOCK
+```
+
+Global review and block thresholds are configurable.
+
+Fraud events are persisted in:
+
+```text
+fraud_risk_events
+```
+
+The event records:
+
+```text
+user
+withdrawal
+risk score
+decision
+review status
+triggered rules
+explanation
+review information
+timestamps
+```
+
+---
+
+# 27. Authentication Security
+
+The application uses Spring Security with stateless JWT authentication.
+
+## Password Security
+
+Passwords are never stored in plain text.
+
+Passwords are hashed using:
+
+```text
+BCryptPasswordEncoder
+```
+
+## JWT
+
+The login API returns a signed JWT.
+
+The token contains information including:
+
+```text
+user ID
+email
+role
+issued time
+expiration time
+```
+
+The JWT expiration is configurable.
+
+Default:
+
+```text
+900000 ms
+```
+
+which is 15 minutes.
+
+---
+
+# 28. Authorization
+
+The application uses role-based authorization.
+
+Roles include:
+
+```text
+USER
+ADMIN
+```
+
+Examples:
+
+### Public
+
+```text
+POST /api/auth/register
+POST /api/auth/login
+GET  /swagger-ui/**
+GET  /v3/api-docs/**
+GET  /actuator/health/**
+```
+
+### Authenticated users
+
+```text
+GET /api/auth/me
+GET /api/wallet
+GET /api/wallet/summary
+GET /api/wallet/transactions
+GET /api/withdrawals
+POST /api/withdrawals
+GET /api/withdrawals/{id}
+GET /api/payouts/configuration
+```
+
+### ADMIN
+
+```text
+POST /api/wallet/credit
+POST /api/wallet/debit
+
+PATCH /api/withdrawals/{id}/processing
+PATCH /api/withdrawals/{id}/approve
+PATCH /api/withdrawals/{id}/reject
+
+GET /api/admin/reconciliation/wallet/{walletId}
+```
+
+### USER
+
+```text
+PATCH /api/withdrawals/{id}/cancel
+```
+
+Authorization is enforced using Spring Security and method-level `@PreAuthorize`.
+
+---
+
+# 29. Validation
+
+Request validation uses Jakarta Bean Validation.
+
+Examples include:
+
+```text
+@NotNull
+@NotBlank
+@Positive
+@Size
+```
+
+The application also performs service-level business validation.
+
+Examples:
+
+- Amount must be positive
+- Currency must be valid
+- Wallet must exist
+- Payout method must exist
+- Payout option must be active
+- Payout option must belong to the selected payout method
+- Withdrawal must be in a valid state
+- Wallet must have sufficient balance
+- Required Idempotency-Key must be supplied
+- User must own the requested withdrawal
+
+---
+
+# 30. Atomic Wallet Operations
+
+Wallet mutations are performed inside transactional service operations.
+
+A wallet debit follows the general sequence:
+
+```text
+Request
+  |
+  v
+Validate amount
+  |
+  v
+Load wallet
+  |
+  v
+Check balance
+  |
+  v
+Calculate new balance
+  |
+  v
+Update wallet
+  |
+  v
+Create ledger transaction
+  |
+  v
+Create audit record
+  |
+  v
+Commit transaction
+```
+
+If an operation fails, the transaction is rolled back so the wallet and its ledger entry are not left in an inconsistent state.
+
+The project also contains concurrency and atomicity integration tests for wallet operations.
+
+---
+
+# 31. Insufficient Balance Protection
+
+Debit operations validate the current balance before subtraction.
+
+Example:
+
+```text
+Wallet balance = 500 VES
+Requested debit = 700 VES
+```
+
+Result:
+
+```text
+Rejected
+```
+
+The wallet must never become negative because of a normal debit operation.
+
+The application raises an `InsufficientBalanceException`.
+
+---
+
+# 32. Idempotency
+
+Withdrawal creation requires:
+
+```http
+Idempotency-Key: <unique-key>
+```
+
+The key is stored together with a request fingerprint.
+
+Database constraint:
+
+```text
+UNIQUE(user_id, idempotency_key)
+```
+
+This prevents accidental duplicate withdrawal creation caused by:
+
+- double-clicking
+- network retries
+- client retries
+- duplicated requests
+- timeout recovery
+
+The system also detects reuse of the same idempotency key with a different request payload.
+
+---
+
+# 33. Rate Limiting
+
+The application implements rate limiting using Redis.
+
+Configured limits include:
+
+### Login / Registration
+
+```text
+5 requests / 60 seconds
+```
+
+### Withdrawal creation
+
+```text
+5 requests / 60 seconds
+```
+
+### Wallet mutations
+
+```text
+20 requests / 60 seconds
+```
+
+### Withdrawal mutations
+
+```text
+20 requests / 60 seconds
+```
+
+When the limit is exceeded, the API returns:
+
+```http
+429 Too Many Requests
+```
+
+and provides a `Retry-After` header.
+
+Rate limiting can be configured through:
+
+```properties
+security.rate-limit.enabled=true
+```
+
+---
+
+# 34. Financial Reconciliation
+
+The application includes a reconciliation service for detecting wallet/ledger inconsistencies.
+
+Endpoint:
+
+```http
+GET /api/admin/reconciliation/wallet/{walletId}?currency=VES
+```
+
+**ADMIN only.**
+
+The service compares:
+
+```text
+Current Wallet Balance
+        vs
+Ledger-Derived Balance
+```
+
+Conceptually:
+
+```text
+difference =
+    walletBalance - ledgerDerivedBalance
+```
+
+If:
+
+```text
+difference == 0
+```
+
+the wallet is reconciled.
+
+Otherwise the system:
+
+- reports the mismatch
+- records a reconciliation failure audit event
+- records an observability metric
+
+---
+
+# 35. Observability
+
+The application uses Spring Boot Actuator and custom metrics.
+
+Health endpoint:
+
+```text
+GET /actuator/health
+```
+
+Metrics endpoint:
+
+```text
+GET /actuator/metrics
+```
+
+The application also uses correlation IDs through:
+
+```text
+CorrelationIdFilter
+```
+
+Structured logging is configured using Logstash-compatible JSON formatting.
+
+Metrics cover important operations such as:
+
+- wallet credit success/failure
+- wallet debit success/failure
+- reconciliation success/failure
+- other operational events
+
+---
+
+# 36. API Response Format
+
+The application uses common response wrappers.
+
+Successful APIs generally return an `ApiResponse`.
+
+Example structure:
+
+```json
+{
+  "success": true,
+  "message": "Wallet retrieved successfully",
+  "data": {}
+}
+```
+
+Errors are handled centrally through:
+
+```text
+GlobalExceptionHandler
+```
+
+Security-related errors are handled by dedicated security exception handlers.
+
+---
+
+# 37. Testing
+
+The project contains unit tests and integration tests across the major business areas.
+
+The test suite covers:
+
+```text
+Authentication
+Wallet
+Wallet transactions
+Wallet consistency
+Wallet isolation
+Wallet concurrency
+Wallet atomicity
+Withdrawals
+Withdrawal concurrency
+Withdrawal eligibility
+Withdrawal fraud decisions
+Withdrawal idempotency
+Payout configuration
+Payout validation
+Payout processing
+Payout queue
+Payout provider
+Payout worker
+Fraud rules
+Fraud risk scoring
+Rate limiting
+Observability
+Reconciliation
+Audit behavior
+```
+
+The repository currently contains approximately **51 test classes** under:
+
+```text
+src/test/java/
+```
+
+---
+
+# 38. Evaluator Testing Guide
+
+An evaluator can test the main wallet and withdrawal functionality using Swagger UI, Postman, curl, or another REST client.
+
+---
+
+## Step 1 — Register a User
+
+```http
+POST /api/auth/register
+```
+
+Example:
+
+```json
+{
+  "name": "Test User",
+  "email": "test@example.com",
+  "password": "Password@123"
+}
+```
+
+A wallet is automatically created for the user.
+
+---
+
+## Step 2 — Login
+
+```http
+POST /api/auth/login
+```
+
+Example:
+
+```json
+{
+  "email": "test@example.com",
+  "password": "Password@123"
+}
+```
+
+Copy the returned JWT.
+
+Use:
+
+```http
+Authorization: Bearer <JWT>
+```
+
+for protected requests.
+
+---
+
+## Step 3 — Check Wallet
+
+```http
+GET /api/wallet
+```
+
+Verify the wallet exists and inspect the supported balances.
+
+---
+
+## Step 4 — Check Payout Configuration
+
+```http
+GET /api/payouts/configuration
+```
+
+Use the returned payout method and payout option IDs for withdrawal testing.
+
+---
+
+## Step 5 — Credit Wallet
+
+Login as an `ADMIN` user and call:
+
+```http
+POST /api/wallet/credit
+```
+
+Verify:
+
+```text
+wallet balance increases
+wallet transaction is created
+audit record is created
+```
+
+---
+
+## Step 6 — Debit Wallet
+
+As an `ADMIN`, call:
+
+```http
+POST /api/wallet/debit
+```
+
+Verify:
+
+```text
+wallet balance decreases
+ledger transaction is created
+```
+
+---
+
+## Step 7 — Test Insufficient Balance
+
+Attempt to debit more than the current balance.
+
+Example:
+
+```text
+Balance = 100 VES
+Debit = 1000 VES
+```
+
+Expected result:
+
+```text
+Request rejected
+InsufficientBalanceException
+Wallet remains unchanged
+No successful debit ledger entry
+```
+
+---
+
+## Step 8 — Create Withdrawal
+
+Use an authenticated user.
+
+Send:
+
+```http
+POST /api/withdrawals
+```
+
+with:
+
+```http
+Authorization: Bearer <JWT>
+Idempotency-Key: withdrawal-test-001
+```
+
+Use a valid payout method and payout option from:
+
+```text
+GET /api/payouts/configuration
+```
+
+Expected behavior:
+
+```text
+Withdrawal created
+Required VES calculated by backend
+Wallet balance deducted
+Wallet transaction recorded
+Withdrawal audit recorded
+Fraud risk evaluation performed
+```
+
+---
+
+## Step 9 — Test Duplicate Withdrawal Request
+
+Send the exact same request again with:
+
+```http
+Idempotency-Key: withdrawal-test-001
+```
+
+Expected behavior:
+
+```text
+No second withdrawal should be created.
+```
+
+The idempotency mechanism protects the operation from duplicate requests.
+
+---
+
+## Step 10 — Test Idempotency Conflict
+
+Reuse:
+
+```text
+withdrawal-test-001
+```
+
+but change the request payload.
+
+Expected behavior:
+
+```text
+Idempotency conflict
+```
+
+The same key must not be used to represent a different withdrawal request.
+
+---
+
+## Step 11 — Test Withdrawal History
+
+```http
+GET /api/withdrawals
+```
+
+Verify the created withdrawal appears in the authenticated user's history.
+
+---
+
+## Step 12 — Test Withdrawal Cancellation
+
+As the withdrawal owner:
+
+```http
+PATCH /api/withdrawals/{withdrawalId}/cancel
+```
+
+Expected behavior:
+
+```text
+Withdrawal becomes CANCELLED
+Previously deducted VES is reversed
+A correction transaction is created
+Audit information is recorded
+```
+
+---
+
+## Step 13 — Test Admin Withdrawal Processing
+
+As an `ADMIN`:
+
+```http
+PATCH /api/withdrawals/{withdrawalId}/processing
+```
+
+Then:
+
+```http
+PATCH /api/withdrawals/{withdrawalId}/approve
+```
+
+Verify the withdrawal state transitions.
+
+---
+
+## Step 14 — Test Withdrawal Rejection
+
+As an `ADMIN`:
+
+```http
+PATCH /api/withdrawals/{withdrawalId}/reject?rejectionReason=Invalid payout details
+```
+
+Expected behavior:
+
+```text
+Withdrawal becomes REJECTED
+Previously deducted VES is reversed
+Correction ledger transaction is created
+Withdrawal audit is recorded
+```
+
+---
+
+## Step 15 — Test Rate Limiting
+
+Repeatedly call a rate-limited endpoint within the configured window.
+
+For example:
+
+```text
+POST /api/withdrawals
+```
+
+After exceeding the configured threshold, the application should return:
+
+```http
+429 Too Many Requests
+```
+
+with:
+
+```http
+Retry-After
+```
+
+---
+
+## Step 16 — Test Reconciliation
+
+As an `ADMIN`:
+
+```http
+GET /api/admin/reconciliation/wallet/{walletId}?currency=VES
+```
+
+The response reports:
+
+```text
+wallet balance
+ledger-derived balance
+difference
+reconciled
+```
+
+A correctly maintained wallet should return:
+
+```text
+reconciled = true
+```
+
+---
+
+# 39. Important Security Rules
+
+The following principles are enforced by the backend:
+
+```text
+Client is not the source of truth
+        ↓
+Backend validates every financial operation
+        ↓
+Database persists wallet state
+        ↓
+Ledger records wallet movements
+        ↓
+Audit records important actions
+        ↓
+Idempotency prevents duplicate withdrawals
+        ↓
+Fraud engine evaluates suspicious activity
+        ↓
+Rate limiting reduces abuse
+        ↓
+Reconciliation detects financial inconsistencies
+```
+
+---
+
+# 40. Configuration
+
+Important configuration categories include:
+
+```text
+Database
+JWT
+CORS
+Redis
+Rate limiting
+Fraud rules
+Actuator
+Metrics
+Logging
+Swagger/OpenAPI
+```
+
+Fraud rules are configurable using environment-backed properties such as:
+
+```text
+FRAUD_RAPID_WITHDRAWAL_WINDOW_MINUTES
+FRAUD_RAPID_WITHDRAWAL_BASELINE
+FRAUD_RAPID_WITHDRAWAL_MAX_EXPECTED
+FRAUD_RAPID_WITHDRAWAL_MAX_SCORE
+```
+
+and equivalent properties for the other fraud rules.
+
+This allows fraud sensitivity to be changed without modifying the rule implementation.
+
+---
+
+# 41. Database Migration Strategy
+
+Flyway manages schema evolution.
+
+Current migration sequence:
+
+```text
+V1  Users
+V2  Wallets
+V3  Wallet Transactions
+V4  Payout Configuration
+V5  Withdrawals
+V6  Withdrawal Idempotency
+V7  Withdrawal Audit
+V8  Audit Log
+V9  Fraud Risk Events
+V10 Authentication Attempts
+V11 Fraud Risk Event Explanation
+V12 Payout Jobs
+```
+
+Hibernate does not automatically create or modify the production schema.
+
+```properties
+spring.jpa.hibernate.ddl-auto=none
+```
+
+---
+
+# 42. Production-Oriented Design
+
+The project is intentionally designed around financial consistency and backend ownership.
+
+Important design principles include:
+
+### Backend as source of truth
+
+Wallet balances, payout values, withdrawal states, and financial calculations are controlled by the backend.
+
+### Transactional consistency
+
+Wallet updates, ledger entries, and important audit operations are performed transactionally.
+
+### Concurrency protection
+
+The wallet and withdrawal layers include concurrency-aware logic and integration tests.
+
+### Idempotent financial requests
+
+Withdrawal creation requires an idempotency key.
+
+### Fraud protection
+
+Suspicious activity is evaluated using configurable risk rules.
+
+### Operational resilience
+
+Payout processing uses a database-backed queue, provider abstraction, retries, and failure handling.
+
+### Reconciliation
+
+Wallet state can be compared against ledger-derived balances.
+
+### Observability
+
+Health checks, metrics, correlation IDs, and structured logging support operational diagnosis.
+
+---
+
+# 43. Documentation
+
+Additional technical documentation is available under:
+
+```text
+docs/
+```
+
+### Architecture
+
+```text
+docs/architecture.md
+```
+
+### Database
+
+```text
+docs/database.md
+```
+
+### Wallet Accounting
+
+```text
+docs/wallet-accounting.md
+```
+
+### Withdrawal Flow
+
+```text
+docs/withdrawal-flow.md
+```
 
 ### Security
 
-* [ ] JWT
-* [ ] Authorization
-* [ ] User isolation
-* [ ] Validation
-* [ ] Rate limiting
-* [ ] Duplicate protection
-* [ ] Audit
+```text
+docs/security.md
+```
 
-### Reliability
+### Idempotency
 
-* [ ] Atomic transactions
-* [ ] Concurrency protection
-* [ ] Reconciliation
-* [ ] Error handling
-* [ ] Monitoring
+```text
+docs/idempotency.md
+```
 
-### Documentation
+### Rate Limiting
 
-* [ ] API documentation
-* [ ] DB documentation
-* [ ] Architecture documentation
-* [ ] Environment example
+```text
+docs/rate-limiting.md
+```
+
+### Reconciliation
+
+```text
+docs/reconciliation.md
+```
 
 ### Testing
 
-* [ ] Normal wallet credit
-* [ ] Normal wallet debit
-* [ ] Insufficient balance
-* [ ] Duplicate withdrawal
-* [ ] Concurrent withdrawal
-* [ ] Invalid payout
-* [ ] User isolation
-* [ ] Reversal
-* [ ] API manipulation
-* [ ] Rate limiting
-* [ ] Reconciliation
-
----
-
-# 59. FINAL BACKEND CHECKPOINT
-
-The backend must not be marked complete merely because the APIs work.
-
-The final checkpoint requires:
-
 ```text
-All Requirements
-       +
-Implementation
-       +
-Security
-       +
-Accounting
-       +
-Concurrency
-       +
-Idempotency
-       +
-Fraud Protection
-       +
-Reconciliation
-       +
-Rate Limiting
-       +
-Monitoring
-       +
-Documentation
-       +
-Testing
-       +
-Final Audit
-       │
-       ▼
-BACKEND-COMPLETE-100%
+docs/testing.md
 ```
 
 ---
 
-# 60. What Happens After `BACKEND-COMPLETE-100%`
+# 44. Build
 
-Only after the final backend checkpoint:
+Compile the project:
 
-```text
-BACKEND-COMPLETE-100%
-        ↓
-Frontend Phase Begins
-        ↓
-Wallet UI
-        ↓
-Transaction History
-        ↓
-Withdrawal UI
-        ↓
-Payout Selection
-        ↓
-Payout Details
-        ↓
-Withdrawal Status
+```bash
+./mvnw clean compile
 ```
 
-The frontend will consume the existing backend APIs.
+Windows:
 
-The frontend must not introduce financial business logic that conflicts with backend rules.
-
----
-
-# 61. Development Rules for Future Contributors
-
-## Rule 1 — Do not trust the frontend
-
-All financial values must be calculated/validated by the backend.
-
----
-
-## Rule 2 — Do not directly modify wallet balances
-
-Wallet changes must go through the wallet service.
-
----
-
-## Rule 3 — Every wallet change requires a ledger record
-
-No silent balance modification.
-
----
-
-## Rule 4 — Financial operations must be transactional
-
-Do not split wallet and ledger updates into unrelated database operations.
-
----
-
-## Rule 5 — Preserve idempotency
-
-Do not remove `Idempotency-Key` protection from withdrawal creation.
-
----
-
-## Rule 6 — Preserve concurrency protection
-
-Do not remove optimistic locking without replacing it with an equivalent or stronger strategy.
-
----
-
-## Rule 7 — Never delete financial history to fix a mistake
-
-Use correction/reversal transactions.
-
----
-
-## Rule 8 — Preserve user isolation
-
-Never allow a normal USER request to access another user's wallet or withdrawal.
-
----
-
-## Rule 9 — Backend owns payout configuration
-
-Do not accept required VES or payout amounts directly from the client as trusted values.
-
----
-
-## Rule 10 — Update tests with every financial change
-
-Any modification to wallet or withdrawal behavior must have corresponding tests.
-
----
-
-# 62. Recommended Development Workflow
-
-For every next-phase task:
-
-```text
-1. Read this README
-        ↓
-2. Identify the relevant existing module
-        ↓
-3. Inspect only the related classes/tests
-        ↓
-4. Implement the change
-        ↓
-5. Add/update tests
-        ↓
-6. Run complete test suite
-        ↓
-7. Verify database migration if required
-        ↓
-8. Update documentation
-        ↓
-9. Mark phase checkpoint
-        ↓
-10. Continue to next phase
+```bash
+mvnw.cmd clean compile
 ```
 
-Do not unnecessarily rewrite unrelated modules.
+Run tests:
 
----
+```bash
+./mvnw test
+```
 
-# 63. Current Starting Point for the Next Developer
+Windows:
 
-The next developer should begin here:
+```bash
+mvnw.cmd test
+```
 
-```text
-CURRENT CHECKPOINT
-==================
-BACKEND-CHECKPOINT-01
+Run the application:
 
-
-START NEXT
-==========
-BACKEND-PHASE-02
-
-
-FIRST TASK
-==========
-Phase 02.1
-Configuration & Environment Hardening
-
-
-THEN
-====
-02.2 Payout Configuration
-02.3 Accounting Review
-02.4 Distributed Rate Limiting
-02.5 Fraud Protection
-02.6 Reconciliation
-02.7 Payout Processing
-02.8 Monitoring
-02.9 API Documentation
-02.10 Architecture Documentation
-02.11 Security Audit
-02.12 Final Requirement Audit
-
-
-FINAL TARGET
-============
-BACKEND-COMPLETE-100%
-
-
-AFTER FINAL TARGET
-==================
-START FRONTEND
+```bash
+./mvnw spring-boot:run
 ```
 
 ---
 
-# 64. Definition of Done
+# 45. Quick Evaluation Checklist
 
-A phase is **not complete** until all of the following are true:
+An evaluator should be able to verify:
 
-```text
-[ ] Code implemented
-[ ] Existing architecture preserved
-[ ] Required tests added
-[ ] Existing tests still pass
-[ ] Database changes migrated
-[ ] Security reviewed
-[ ] Error handling reviewed
-[ ] Documentation updated
-[ ] Requirement verified
-[ ] Checkpoint marked
-```
+- [ ] Register user
+- [ ] Wallet automatically created
+- [ ] Login and receive JWT
+- [ ] Access protected APIs
+- [ ] Retrieve wallet
+- [ ] Retrieve wallet summary
+- [ ] Retrieve transaction history
+- [ ] Retrieve payout configuration
+- [ ] Credit wallet as admin
+- [ ] Debit wallet as admin
+- [ ] Reject insufficient balance
+- [ ] Create withdrawal
+- [ ] Require Idempotency-Key
+- [ ] Prevent duplicate withdrawal
+- [ ] Detect idempotency conflict
+- [ ] View withdrawal history
+- [ ] Cancel withdrawal
+- [ ] Process withdrawal as admin
+- [ ] Approve withdrawal as admin
+- [ ] Reject withdrawal as admin
+- [ ] Verify balance reversal
+- [ ] Verify wallet ledger entries
+- [ ] Verify audit entries
+- [ ] Exercise fraud detection
+- [ ] Exercise rate limiting
+- [ ] Run reconciliation
+- [ ] Access health endpoint
+- [ ] Access Swagger/OpenAPI
 
 ---
 
-# 65. Project State Summary
+# 46. Project Status
+
+The project currently contains the implemented backend components for:
 
 ```text
-PROJECT
-=======
-VELoop Rewards Wallet & Withdrawal Backend
-
-
-STACK
-=====
-Java 21
-Spring Boot 3.5.16
-Spring Security
-JWT
-JPA / Hibernate
-MySQL
-Flyway
-Maven
-
-
-CORE STATUS
-===========
-Authentication              COMPLETE
-Authorization              COMPLETE
-User Management             COMPLETE
-Wallet                      COMPLETE
-Multi-Currency              COMPLETE
-Wallet Ledger               COMPLETE
-Credit / Debit              COMPLETE
-Balance Validation          COMPLETE
-Concurrency Protection      COMPLETE
-Payout Foundation           COMPLETE
-Withdrawal System           COMPLETE
-Withdrawal Lifecycle        COMPLETE
-Idempotency                 COMPLETE
-User Isolation              COMPLETE
-Rate Limiting               IMPLEMENTED
-Audit Logging               IMPLEMENTED
-Testing                     IMPLEMENTED
-
-
-REMAINING
-=========
-Configuration Hardening
-Payout Completion
-Accounting Review
-Distributed Rate Limiting
-Fraud Protection
-Financial Reconciliation
+Authentication
+Wallet Management
+Wallet Accounting
+Withdrawals
+Payout Configuration
 Payout Processing
-Monitoring
-Documentation Completion
-Final Security Audit
-Final Requirement Audit
-
-
-CURRENT CHECKPOINT
-==================
-BACKEND-CHECKPOINT-01
-
-
-NEXT CHECKPOINT
-===============
-BACKEND-PHASE-02
-
-
-FINAL BACKEND CHECKPOINT
-========================
-BACKEND-COMPLETE-100%
-
-
-FRONTEND
-========
-NOT STARTED
-INTENTIONALLY BLOCKED UNTIL BACKEND COMPLETION
+Fraud & Abuse Protection
+Idempotency
+Rate Limiting
+Audit Logging
+Observability
+Financial Reconciliation
+Automated Testing
+Technical Documentation
 ```
+
+The repository is structured as a backend-focused financial/rewards system rather than a simple CRUD wallet application.
 
 ---
 
-# 66. Final Instruction
+## License
 
-**Do not start frontend development yet.**
-
-The immediate objective is:
-
-> **Complete `BACKEND-PHASE-02` and reach `BACKEND-COMPLETE-100%` against the original VELoop backend requirements.**
-
-Once the final backend checkpoint is achieved, the project can safely move to frontend development.
-
-**This README should be updated after every major phase so that the next developer can continue from the latest checkpoint without re-auditing the entire project.**
+This project was developed as the VELoop Rewards Wallet backend implementation and evaluation project.
