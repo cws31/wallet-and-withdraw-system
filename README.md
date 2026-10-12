@@ -1,899 +1,275 @@
-# VELoop Rewards — Wallet & Withdrawal Backend
+# Wallet and Withdrawal System
 
-> **Backend status:** FINAL BACKEND VERIFICATION COMPLETE  
-> **Automated regression:** `257/257 PASS`  
-> **Manual API verification:** Completed  
-> **Current scope:** Backend implementation and verification
+A full-stack rewards-wallet application built around a Spring Boot REST API and a React frontend. The backend is the source of truth for wallet balances, ledger entries, payout configuration, withdrawal requests, and financial audit operations.
 
-VELoop Rewards Backend is an independently developed Spring Boot backend for a secure, backend-controlled rewards wallet, payout configuration, withdrawal processing, fraud/abuse protection, idempotency, audit logging, reconciliation, rate limiting, and operational observability.
+> **Project status:** Development/demo application. Review the current test results and deployment configuration before treating any feature as production-ready. No production payout-provider integration is claimed by this repository.
 
-The backend is the **single source of truth** for financial and reward state. The client must never be trusted to provide wallet balances, authoritative withdrawal amounts, payout values, or ownership.
+## Contents
 
-This is a development/demo system. It must not connect to VELoop production databases, credentials, or production services.
+- [Features](#features)
+- [Technology stack](#technology-stack)
+- [Architecture](#architecture)
+- [Repository structure](#repository-structure)
+- [Prerequisites](#prerequisites)
+- [Local setup](#local-setup)
+- [API overview](#api-overview)
+- [Database migrations](#database-migrations)
+- [Testing](#testing)
+- [Security notes](#security-notes)
+- [Documentation](#documentation)
+- [Current limitations](#current-limitations)
 
----
+## Features
 
-## 1. Project Objectives
+### Wallet and ledger
 
-The backend manages:
+- Supports VEs, SVEs, Gems, Tokens, and Spins.
+- Provides wallet balances, transaction history, and wallet summary APIs.
+- Records wallet changes in a transaction ledger.
+- Performs server-side balance and ownership checks for wallet operations.
 
-- VES
-- SVES
-- Gems
-- Tokens
-- Spins
-- Wallet balances
-- Wallet ledger transactions
-- Reward credits and deductions
-- Exchange-related balance changes
-- Payout methods and payout options
-- Withdrawal requests
-- Withdrawal status
-- Payout details
-- User ownership/isolation
-- Idempotency
-- Fraud and abuse protection
-- Rate limiting
-- Audit records
-- Reconciliation
-- Payout-job processing architecture
-- Health, metrics, and request tracing
+### Payouts and withdrawals
 
-The central rule is:
+- Exposes payout configuration from the backend rather than relying on frontend-defined payout values.
+- Supports withdrawal requests and withdrawal status management.
+- Includes idempotency handling to help prevent duplicate withdrawal operations.
+- Includes administrative processing, approval, rejection, and cancellation flows.
+- Uses compensating ledger entries for applicable reversal flows rather than deleting financial history.
 
-> **The frontend is only the interface. The backend owns the money logic.**
+### Security and operational controls
 
----
+- Spring Security with JWT-based authentication and role-based authorization.
+- BCrypt password hashing and request validation.
+- Redis-backed rate limiting.
+- Fraud/risk evaluation and audit records.
+- Wallet-versus-ledger reconciliation for administrative investigation.
+- Spring Boot Actuator health and metrics endpoints, plus request/correlation tracing support.
 
-## 2. Technology Stack
+## Technology stack
 
 | Area | Technology |
 |---|---|
-| Language | Java 21 |
-| Framework | Spring Boot 3.5.16 |
-| API | Spring Web / REST |
-| Security | Spring Security |
-| Authentication | JWT / JJWT 0.12.6 |
-| Password hashing | BCrypt |
-| Persistence | Spring Data JPA / Hibernate |
+| Backend language | Java 21 |
+| Backend framework | Spring Boot 3.5.16 |
+| Build | Maven / Maven Wrapper |
+| API | Spring Web, REST, Springdoc OpenAPI |
+| Persistence | Spring Data JPA, Hibernate |
 | Database | MySQL 8.x |
-| Migrations | Flyway |
+| Schema migrations | Flyway |
+| Authentication | Spring Security, JWT (JJWT) |
+| Password hashing | BCrypt |
 | Rate limiting | Redis |
-| Validation | Jakarta Bean Validation |
-| API documentation | Springdoc OpenAPI |
-| Monitoring | Spring Boot Actuator |
-| Build | Maven |
-| Testing | JUnit 5, Mockito, Spring Boot Test, MockMvc, integration tests |
+| Frontend | React 19, JavaScript, Vite |
+| Styling | Tailwind CSS 4 |
+| HTTP client and routing | Axios, React Router |
+| Backend tests | JUnit 5, Mockito, Spring Boot Test, MockMvc, integration tests |
 
----
-
-## 3. Architecture
+## Architecture
 
 ```text
-Client / Frontend
+Browser (React / Vite)
         |
-        | REST + JWT
+        | HTTP + JWT
         v
-Spring Security / Filters
+Spring Security filters
         |
         v
-Controllers
+REST controllers
         |
         v
-Domain Services
-  |      |       |       |       |
- Auth   Wallet  Payout  Fraud  Reconciliation
-        |         |
-        |      Withdrawal
-        |      /     \
-        | Idempotency Audit
-        |
-        v
-Repositories / JPA
-        |
-        v
-      MySQL
-        ^
-      Flyway
+Application/domain services
+  |       |        |          |
+ Auth   Wallet   Withdrawal  Fraud / Reconciliation
+          |         |
+          v         v
+      JPA repositories / audit / idempotency
+                    |
+                    v
+                  MySQL
 
-Redis -> distributed rate limiting
-Actuator -> health and metrics
-Structured logs -> request/correlation tracing
+Redis: rate limiting
+Flyway: database schema migrations
+Actuator: health and metrics
 ```
 
-Complete architecture:
+The frontend is a client only. It must not be trusted to supply authoritative wallet balances, withdrawal costs, ownership, or payout values. The backend should resolve and validate those values from persisted state and server-side rules.
+
+## Repository structure
 
 ```text
-docs/architecture.md
-```
-
----
-
-## 4. Backend Source of Truth
-
-The backend controls:
-
-```text
-Wallet balances
-Required VES
-Payout values
-Payout availability
-Withdrawal eligibility
-Withdrawal status
-Financial transactions
-Ownership
-Fraud decisions
-Audit records
-Reconciliation state
-```
-
-A client cannot safely change a wallet by modifying browser state or sending an arbitrary financial amount.
-
-Example:
-
-```text
-Frontend attempts:
-VES = 100000
-
-Backend:
-Uses database wallet balance and server-side business rules.
-```
-
----
-
-## 5. Wallet & Ledger
-
-The wallet supports:
-
-```text
-VES
-SVES
-GEMS
-TOKENS
-SPINS
-```
-
-Every successful wallet mutation creates a ledger transaction containing fields such as:
-
-```text
-transaction_id
-user_id
-wallet_id
-currency
-transaction_type
-amount
-balance_before
-balance_after
-source
-reference_id
-status
-description
-metadata
-created_at
-```
-
-Wallet accounting is documented in:
-
-```text
-docs/wallet-accounting.md
-```
-
----
-
-## 6. Payout Configuration
-
-Payout configuration is controlled by the backend/database and is not hardcoded in the frontend.
-
-Configured methods include:
-
-| Method | State |
-|---|---|
-| UPI | Active |
-| Amazon Gift Card | Active |
-| Google Play Gift Card | Active |
-| PayPal | Inactive until provider integration is enabled |
-
-Configured INR payout values:
-
-| Payout | Required VES |
-|---:|---:|
-| ₹10 | 2,400 |
-| ₹25 | 5,800 |
-| ₹50 | 10,000 |
-| ₹100 | 19,500 |
-| ₹150 | 28,500 |
-| ₹300 | 52,500 |
-| ₹500 | 80,500 |
-| ₹1,000 | 150,000 |
-
-The client sends a payout option ID. The backend resolves the actual financial values from stored configuration.
-
----
-
-## 7. Withdrawal Flow
-
-```text
-Login
-  ↓
-JWT authentication
-  ↓
-Get payout configuration
-  ↓
-Select payout method
-  ↓
-Select payout option
-  ↓
-Enter payout details
-  ↓
-POST /api/withdrawals
-  ↓
-Idempotency validation
-  ↓
-Eligibility validation
-  ↓
-Payout validation
-  ↓
-Fraud/risk evaluation
-  ↓
-Resolve required VES
-  ↓
-Wallet debit for normal ALLOW path
-  ↓
-Ledger transaction
-  ↓
-PENDING withdrawal
-  ↓
-Admin processing / approval / rejection
-```
-
-Withdrawal statuses:
-
-```text
-PENDING
-PROCESSING
-APPROVED
-REJECTED
-CANCELLED
-```
-
-For normally debited withdrawals, rejection/cancellation uses a compensating `CORRECTION` ledger transaction rather than deleting the original debit.
-
-See:
-
-```text
-docs/withdrawal-flow.md
-```
-
----
-
-## 8. Idempotency
-
-Withdrawal creation requires a valid idempotency key at the service layer.
-
-```http
-Idempotency-Key: <unique-value>
-```
-
-The backend creates a request fingerprint and stores the user/key combination in `withdrawal_idempotency`.
-
-```text
-Same key + same request
-        ↓
-Existing withdrawal returned
-        ↓
-No second financial operation
-```
-
-```text
-Same key + different request
-        ↓
-Rejected
-```
-
-See:
-
-```text
-docs/idempotency.md
-```
-
----
-
-## 9. Fraud & Abuse Protection
-
-The backend implements seven fraud/risk rules:
-
-```text
-Rapid Withdrawal
-Repeated Withdrawal
-Repeated Failed Request
-Unusual Wallet Activity
-Suspicious Payout Request
-Suspicious Account Activity
-Multiple Suspicious Payout Pattern
-```
-
-Risk evaluation supports:
-
-```text
-ALLOW
-REVIEW
-BLOCK
-```
-
-The scoring model uses configuration-driven rule parameters, normalized severity, nonlinear scoring, and configurable global thresholds.
-
-The fraud-event table is an audit/result store; authoritative historical financial/activity data comes from the underlying wallet, withdrawal, and authentication records.
-
----
-
-## 10. Rate Limiting
-
-Redis-backed distributed rate limiting protects sensitive operations.
-
-| Category | Limit | Window |
-|---|---:|---:|
-| Login | 5 | 60 seconds |
-| Withdrawal creation | 5 | 60 seconds |
-| Wallet mutations | 20 | 60 seconds |
-| Withdrawal mutations | 20 | 60 seconds |
-
-Exceeded limits return:
-
-```text
-429 Too Many Requests
-```
-
-See:
-
-```text
-docs/rate-limiting.md
-```
-
----
-
-## 11. Security
-
-Security controls include:
-
-```text
-JWT authentication
-Role-based authorization
-Resource ownership checks
-BCrypt password hashing
-Server-side validation
-Redis rate limiting
-Withdrawal idempotency
-Wallet optimistic locking
-Database uniqueness constraints
-Fraud/risk controls
-Audit logging
-Controlled error responses
-Externalized secrets
-Configuration-driven CORS
-```
-
-See:
-
-```text
-docs/security.md
-```
-
----
-
-## 12. Reconciliation
-
-The backend provides an admin reconciliation endpoint:
-
-```http
-GET /api/admin/reconciliation/wallet/{walletId}?currency=VES
-```
-
-It compares:
-
-```text
-Stored wallet balance
-        vs
-Ledger-derived balance
-```
-
-A mismatch is recorded and audited rather than silently overwriting the wallet.
-
-See:
-
-```text
-docs/reconciliation.md
-```
-
----
-
-## 13. API Surface
-
-### Authentication
-
-```http
-POST /api/auth/register
-POST /api/auth/login
-GET  /api/auth/me
-```
-
-### Wallet
-
-```http
-GET  /api/wallet
-GET  /api/wallet/transactions
-GET  /api/wallet/summary
-POST /api/wallet/credit
-POST /api/wallet/debit
-```
-
-### Payout Configuration
-
-```http
-GET /api/payouts/configuration
-```
-
-### Withdrawals
-
-```http
-POST  /api/withdrawals
-GET   /api/withdrawals
-GET   /api/withdrawals/{withdrawalId}
-PATCH /api/withdrawals/{withdrawalId}/processing
-PATCH /api/withdrawals/{withdrawalId}/approve
-PATCH /api/withdrawals/{withdrawalId}/reject
-PATCH /api/withdrawals/{withdrawalId}/cancel
-```
-
-### Reconciliation
-
-```http
-GET /api/admin/reconciliation/wallet/{walletId}
-```
-
-### Operational APIs
-
-```http
-GET /actuator/health
-GET /actuator/health/liveness
-GET /actuator/health/readiness
-GET /actuator/metrics
-GET /v3/api-docs
-GET /swagger-ui.html
-```
-
-Complete endpoint documentation:
-
-```text
-API_DOCUMENTATION.md
-```
-
----
-
-## 14. Database
-
-Flyway controls schema evolution.
-
-Current migration sequence:
-
-```text
-V1__create_users.sql
-V2__create_wallets.sql
-V3__create_wallet_transactions.sql
-V4__create_payout_configuration.sql
-V5__create_withdrawals.sql
-V6__create_withdrawal_idempotency.sql
-V7__create_withdrawal_audit.sql
-V8__create_audit_log.sql
-V9__create_fraud_risk_events.sql
-V10__create_authentication_attempts.sql
-V11__add_explanation_to_fraud_risk_events.sql
-V12__create_payout_jobs.sql
-```
-
-See:
-
-```text
-docs/database.md
-```
-
----
-
-## 15. Payout Processing Architecture
-
-The backend includes a persistent payout job model and worker/provider abstraction:
-
-```text
-Withdrawal
-    ↓
-PayoutJob
-    ↓
-PayoutWorker
-    ↓
-PayoutProviderRegistry
-    ↓
-PayoutProvider
-```
-
-Payout jobs use persisted status, attempt count, retry timing, and last-error information.
-
-The project does **not** claim a production payout-provider integration. PayPal remains inactive until an appropriate provider is available.
-
----
-
-## 16. Demo Data
-
-Demo data can be enabled through:
-
-```properties
-DEMO_DATA_ENABLED=true
-```
-
-Demo account:
-
-```text
-Email:    demo@veloop.test
-Password: Demo@12345
-```
-
-Demo wallet:
-
-```text
-VES    = 25,000
-SVES   = 5,000
-GEMS   = 100
-TOKENS = 500
-SPINS  = 3
-```
-
-The initializer creates sample ledger activity including:
-
-```text
-Ad Reward
-Daily Reward
-Referral Reward
-Bonus
-Withdrawal
-SVES reward
-Gems reward
-Tokens reward
-Spins bonus
-```
-
-Demo values are for development/testing only.
-
----
-
-## 17. Local Setup
-
-### Prerequisites
-
-Install:
-
-```text
-Java 21
-Maven or Maven Wrapper
-MySQL 8.x
-Redis
-```
-
-### Database
-
-Create a development database:
-
-```sql
-CREATE DATABASE veloop_rewards;
-```
-
-### Environment
-
-Copy:
-
-```text
-.env.example
-```
-
-to:
-
-```text
-.env
-```
-
-Fill in local values for:
-
-```text
-DB_URL
-DB_USERNAME
-DB_PASSWORD
-JWT_SECRET
-JWT_EXPIRATION
-CORS_ALLOWED_ORIGINS
-REDIS_HOST
-REDIS_PORT
-REDIS_TIMEOUT
-DEMO_DATA_ENABLED
-```
-
-Never commit `.env`.
-
-### Run
-
-Windows:
-
-```cmd
-mvnw.cmd spring-boot:run
-```
-
-Other systems:
-
-```bash
-./mvnw spring-boot:run
-```
-
-Backend URL:
-
-```text
-http://localhost:8080
-```
-
-Swagger UI:
-
-```text
-http://localhost:8080/swagger-ui.html
-```
-
-OpenAPI:
-
-```text
-http://localhost:8080/v3/api-docs
-```
-
----
-
-## 18. Testing
-
-Run the full regression suite:
-
-Windows:
-
-```cmd
-mvnw.cmd clean test
-```
-
-Other systems:
-
-```bash
-./mvnw clean test
-```
-
-### Current verified baseline
-
-```text
-257 / 257 tests passed
-Failures: 0
-Errors: 0
-```
-
-The test suite covers wallet accounting, concurrency, ownership, withdrawal lifecycle, payout validation, idempotency, fraud/risk, rate limiting, audit, payout processing, and reconciliation.
-
-See:
-
-```text
-docs/testing.md
-```
-
----
-
-## 19. Postman
-
-The repository contains:
-
-```text
-postman/VELOop_Rewards_Backend.postman_collection.json
-```
-
-Import the collection into Postman and start with:
-
-```text
-Login - Demo User
-Current User
-Get Wallet
-Get Wallet Summary
-Get Wallet Transactions
-Get Payout Configuration
-```
-
-Then exercise the withdrawal and reconciliation flow.
-
----
-
-## 20. Documentation
-
-```text
-docs/
-├── architecture.md
-├── database.md
-├── wallet-accounting.md
-├── withdrawal-flow.md
-├── security.md
-├── idempotency.md
-├── rate-limiting.md
-├── reconciliation.md
-└── testing.md
-```
-
-Additional API documentation:
-
-```text
-API_DOCUMENTATION.md
-```
-
----
-
-## 21. Project Structure
-
-```text
-veloop-rewards-backend/
-│
-├── src/
-│   ├── main/
-│   │   ├── java/
-│   │   └── resources/
-│   │       └── db/migration/
-│   └── test/
-│
-├── docs/
-├── postman/
-├── pom.xml
-├── mvnw
-├── mvnw.cmd
-├── README.md
-├── API_DOCUMENTATION.md
-├── .env.example
+wallet-and-withdrawal-system/
+├── backend/                 # Spring Boot application, tests and migrations
+├── frontend/                # React/Vite user interface
+├── docs/                    # Architecture and domain/operations documentation
+├── postman/                 # Postman API collection
+├── API_DOCUMENTATION.md     # API endpoint reference
+├── README.md                # Project overview and setup
 └── .gitignore
 ```
 
-The application source is organized into modules/packages for:
+## Prerequisites
 
-```text
-auth
-security
-user
-wallet
-payout
-withdrawal
-idempotency
-fraud
-payoutprocessing
-reconciliation
-audit
-observability
-config
-common
+Install the following before starting locally:
+
+- Java 21
+- MySQL 8.x
+- Redis, for the configured rate-limiting functionality
+- Node.js compatible with the Vite version in `frontend/package.json`
+- npm
+
+You can check installed versions with:
+
+```bash
+java -version
+node --version
+npm --version
 ```
 
----
+## Local setup
 
-## 22. Git & Security Rules
+### 1. Get the source code
 
-Commit:
-
-```text
-README.md
-API_DOCUMENTATION.md
-.env.example
-docs/
-postman/
-src/
-pom.xml
+```bash
+git clone <YOUR_GITHUB_REPOSITORY_URL>
+cd wallet-and-withdrawal-system
 ```
 
-Never commit:
+Replace the placeholder URL with the HTTPS or SSH URL shown on your GitHub repository page.
 
-```text
-.env
-real credentials
-JWT secrets
-production database URLs
-API keys
-private keys
+### 2. Configure the backend
+
+Create a local environment file from the example:
+
+```bash
+cp backend/.env.example backend/.env
 ```
 
-The existing `.gitignore` excludes `.env` and preserves `.env.example`.
+Edit `backend/.env` with your local MySQL connection, database username/password, a strong JWT secret, CORS origins, and Redis settings. Never commit the real `.env` file or production credentials.
 
----
+Create an empty MySQL database for local development and ensure the configured Redis instance is available. Confirm that `backend/src/main/resources/application.properties` reads the environment variables expected by `backend/.env.example`; environment variable names must match exactly.
 
-## 23. Current Backend Requirement Coverage
+### 3. Start the backend
 
-| Requirement | Status |
+macOS/Linux:
+
+```bash
+cd backend
+./mvnw spring-boot:run
+```
+
+Windows PowerShell or Command Prompt:
+
+```bat
+cd backend
+mvnw.cmd spring-boot:run
+```
+
+The default local API port is configured through `SERVER_PORT` (the example uses `8080`). Flyway applies the database migrations during application startup when correctly configured.
+
+### 4. Start the frontend
+
+Open a second terminal from the repository root:
+
+```bash
+cd frontend
+npm install
+```
+
+Create the frontend environment file:
+
+```bash
+cp .env.example .env
+```
+
+Set `VITE_API_BASE_URL` to the backend base URL, for example `http://localhost:8080`, then start Vite:
+
+```bash
+npm run dev
+```
+
+Open the local URL printed by Vite. If the frontend and backend run on different origins, configure the backend CORS allowlist accordingly.
+
+## API overview
+
+The exact request and response schemas are documented in [`API_DOCUMENTATION.md`](API_DOCUMENTATION.md). Main API groups include:
+
+| Area | Example endpoints |
 |---|---|
-| Backend-driven wallet | ✅ Complete |
-| VES/SVES/Gems/Tokens/Spins | ✅ Complete |
-| Wallet ledger | ✅ Complete |
-| Credits/debits | ✅ Complete |
-| Balance validation | ✅ Complete |
-| Atomic wallet operations | ✅ Complete |
-| Optimistic locking | ✅ Complete |
-| Wallet APIs | ✅ Complete |
-| Transaction history/pagination | ✅ Complete |
-| Wallet summary | ✅ Complete |
-| Payout configuration | ✅ Complete |
-| Backend payout-value resolution | ✅ Complete |
-| Withdrawal lifecycle | ✅ Complete |
-| Wallet deduction/reversal | ✅ Complete |
-| Ownership isolation | ✅ Complete |
-| JWT authentication | ✅ Complete |
-| Authorization | ✅ Complete |
-| Idempotency | ✅ Complete |
-| Withdrawal concurrency protection | ✅ Complete |
-| Fraud & abuse protection | ✅ Complete |
-| Redis rate limiting | ✅ Complete |
-| Audit logging | ✅ Complete |
-| Reconciliation | ✅ Complete |
-| Payout job/worker architecture | ✅ Complete |
-| Demo/seed data | ✅ Complete |
-| Postman collection | ✅ Complete |
-| API documentation | ✅ Complete |
-| Architecture/database/security docs | ✅ Complete |
-| Automated regression | ✅ 257/257 PASS |
-| Manual API verification | ✅ Complete |
+| Authentication | `POST /api/auth/register`, `POST /api/auth/login`, `GET /api/auth/me` |
+| Wallet | `GET /api/wallet`, `GET /api/wallet/transactions`, `GET /api/wallet/summary` |
+| Payout configuration | `GET /api/payouts/configuration` |
+| Withdrawals | `POST /api/withdrawals`, `GET /api/withdrawals`, `GET /api/withdrawals/{withdrawalId}` |
+| Admin withdrawal actions | `PATCH /api/withdrawals/{withdrawalId}/processing`, `/approve`, `/reject`, and `/cancel` (see API docs for exact paths and permissions) |
+| Reconciliation | `GET /api/admin/reconciliation/wallet/{walletId}` |
+| Health | `GET /actuator/health` |
+| OpenAPI | `GET /v3/api-docs` and the configured Swagger UI route |
 
----
+Protected endpoints require the authentication mechanism configured by the backend. Administrative endpoints require appropriate authorization. Consult the API documentation and security configuration before using the endpoints.
 
-## 24. Remaining Overall Submission Work
+## Database migrations
 
-The backend implementation and verification are complete.
-
-The original internship submission also expects demonstration-level deliverables outside the backend itself:
+Flyway migration scripts are maintained under:
 
 ```text
-React demonstration frontend
-Live frontend link
-Live backend/API link
-Short demonstration video
-Final submission packaging
+backend/src/main/resources/db/migration/
 ```
 
-These are submission/deployment deliverables, not unfinished wallet accounting or backend-security defects.
+Do not manually edit a migration that has already been applied to a shared database. Add a new versioned migration for subsequent schema changes. See [`docs/database.md`](docs/database.md).
 
----
+## Testing
 
-## 25. Scalability Discussion
+Run backend tests from the `backend/` directory:
 
-If the system grows from 1,000 to 1,000,000 users, the architecture should scale around the same financial invariants:
-
-```text
-Database transactions
-Atomic wallet updates
-Ledger-based accounting
-Database indexing
-Idempotency
-Queue-based payout processing
-Redis/shared caching where appropriate
-Distributed rate limiting
-Fraud detection
-Audit logging
-Reconciliation
-Monitoring
-Horizontal application scaling
+```bash
+./mvnw test
 ```
 
-The most important rule remains:
+On Windows:
 
-> Scale the infrastructure without weakening wallet correctness or financial consistency.
-
----
-
-## 26. Final Backend Checkpoint
-
-```text
-BACKEND-FINAL-CHECKPOINT
-
-Automated tests:         257/257 PASS
-Manual API verification: COMPLETED
-Documentation:           COMPLETED
-Postman collection:      COMPLETED
-Demo data:               COMPLETED
-
-Backend status:
-READY FOR FRONTEND / DEPLOYMENT / DEMONSTRATION
+```bat
+mvnw.cmd test
 ```
+
+Some integration tests may require a reachable MySQL/Redis instance and correctly configured test properties. Run the frontend production build and lint checks from `frontend/`:
+
+```bash
+npm ci
+npm run build
+npm run lint
+```
+
+Only report test counts after running the commands against the current commit. A previously recorded test count is not a substitute for a fresh test result.
+
+## Security notes
+
+- Never commit `.env` files, passwords, JWT secrets, database URLs containing credentials, access tokens, or real user data.
+- Keep `backend/.env.example` and `frontend/.env.example` limited to placeholders and non-sensitive local defaults.
+- Use a strong, unique JWT secret outside local development.
+- Do not expose database or Redis ports publicly for a demo deployment.
+- Restrict CORS origins and administrative endpoints to the intended environments and roles.
+- Wallet credit/debit endpoints and reconciliation/admin APIs must remain protected; do not expose them as public user operations.
+- Review logging to ensure tokens, passwords, payout details, and other sensitive data are not written to logs.
+
+## Documentation
+
+- [`API_DOCUMENTATION.md`](API_DOCUMENTATION.md) — endpoint reference
+- [`docs/architecture.md`](docs/architecture.md) — system architecture
+- [`docs/database.md`](docs/database.md) — database design and migrations
+- [`docs/wallet-accounting.md`](docs/wallet-accounting.md) — wallet and ledger concepts
+- [`docs/withdrawal-flow.md`](docs/withdrawal-flow.md) — withdrawal lifecycle
+- [`docs/idempotency.md`](docs/idempotency.md) — idempotency behavior
+- [`docs/security.md`](docs/security.md) — security controls
+- [`docs/rate-limiting.md`](docs/rate-limiting.md) — rate-limiting configuration
+- [`docs/reconciliation.md`](docs/reconciliation.md) — wallet/ledger reconciliation
+- [`docs/testing.md`](docs/testing.md) — test guidance
+- [`postman/`](postman/) — API request collection
+
+## Current limitations
+
+- This repository is a development/demo project and has not been independently certified for production financial use.
+- A payout-job/worker/provider abstraction does not by itself establish a live payout integration. Configure and validate a real provider, credentials, callbacks, reconciliation, retries, and operational controls before processing real payouts.
+- Test results and deployment behavior depend on the current code and environment; verify them against the commit you intend to publish.
+
+## Contributing
+
+Keep changes focused and reviewable. Update tests and relevant documentation when changing wallet accounting, withdrawal transitions, security rules, API contracts, or database schema. Never include secrets or local build artifacts in commits.

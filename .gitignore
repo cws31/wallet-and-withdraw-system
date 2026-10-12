@@ -1,44 +1,49 @@
 
-HELP.md
-
-
 .env
 .env.*
 !.env.example
-
+**/.env
+**/.env.*
+!**/.env.example
 
 **/target/
-.mvn/wrapper/maven-wrapper.jar
-!**/src/main/**/target/
-!**/src/test/**/target/
-
+*.class
+*.jar
+*.war
+hs_err_pid*
+replay_pid*
 
 **/node_modules/
 **/dist/
+**/coverage/
+.npm/
 
-.apt_generated/
-.classpath
-.factorypath
-.project
-.settings/
-.springBeans
-.sts4-cache/
+*.log
+logs/
+*.pid
+*.seed
+
+.DS_Store
+Thumbs.db
+Desktop.ini
+
 
 .idea/
-*.iws
+.vscode/
 *.iml
 *.ipr
+*.iws
+.classpath
+.project
+.settings/
+.factorypath
+.apt_generated/
+.sts4-cache/
+.springBeans
 
-
-/nbproject/private/
-/nbbuild/
-/nbdist/
-/.nb-gradle/
-
-
-.vscode/
-
-
+.gradle/
 build/
-!**/src/main/**/build/
-!**/src/test/**/build/
+
+
+*.tmp
+*.bak

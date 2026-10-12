@@ -1,16 +1,82 @@
-# React + Vite
+# Wallet and Withdrawal System — Frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+React frontend for the Wallet and Withdrawal System. It communicates with the Spring Boot backend and displays wallet, payout, and administrative workflows. The backend remains the source of truth for balances, payout configuration, authorization, and withdrawal state.
 
-Currently, two official plugins are available:
+## Technology
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- React 19
+- JavaScript (ES modules)
+- Vite
+- Tailwind CSS 4
+- Axios
+- React Router
+- Oxlint
 
-## React Compiler
+## Prerequisites
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+- Node.js compatible with the Vite version in `package.json`
+- npm
+- The backend API running and reachable from the browser
 
-## Expanding the Oxlint configuration
+## Setup
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and Oxlint's TypeScript related rules in your project.
+From the repository root:
+
+```bash
+cd frontend
+npm ci
+```
+
+Create a local environment file:
+
+```bash
+cp .env.example .env
+```
+
+Set the API base URL in `frontend/.env`:
+
+```dotenv
+VITE_API_BASE_URL=http://localhost:8080
+```
+
+Use the actual backend URL for your environment. Vite exposes variables prefixed with `VITE_` to client-side code, so never place secrets in this file.
+
+## Run locally
+
+```bash
+npm run dev
+```
+
+Open the local URL printed by Vite. The backend must be running, and its CORS configuration must allow the frontend origin.
+
+## Build and lint
+
+```bash
+npm run build
+npm run lint
+```
+
+To preview the production build locally:
+
+```bash
+npm run preview
+```
+
+## Application areas
+
+The source includes these screens and flows:
+
+- Login
+- Wallet balances and transaction information
+- Payout and withdrawal flow
+- Administrative withdrawal management
+- Administrative wallet reconciliation
+
+Routes and available actions are defined in `src/App.jsx` and the page components under `src/pages/`.
+
+## Configuration and security
+
+- `VITE_API_BASE_URL` must point to the backend API base URL.
+- Do not commit `.env` files or place passwords, JWT secrets, database credentials, or private API keys in frontend environment variables.
+- The frontend is not a security boundary. Every sensitive action and every ownership/role check must be enforced by the backend.
+- Do not trust balances, payout values, withdrawal eligibility, or withdrawal status supplied by the browser.
