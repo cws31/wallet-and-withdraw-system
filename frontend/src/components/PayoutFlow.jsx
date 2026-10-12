@@ -62,7 +62,14 @@ function normalizeMethods(response) {
     .filter((method) => method?.id != null)
     .map((method) => ({
       ...method,
-      options: Array.isArray(method.options) ? method.options : [],
+      options: Array.isArray(method.options)
+        ? method.options.filter((option) =>
+            option?.active !== false &&
+            option?.isActive !== false &&
+            option?.enabled !== false &&
+            option?.available !== false
+          )
+        : [],
     }));
 }
 
@@ -119,7 +126,7 @@ function StepLabel({ number, title, description, complete }) {
   );
 }
 
-function ChoiceButton({ selected, onClick, title, description, trailing, disabled = false, status }) {
+function ChoiceButton({ selected, onClick, title, description, trailing, disabled = false }) {
   return (
     <button
       type="button"
@@ -132,7 +139,6 @@ function ChoiceButton({ selected, onClick, title, description, trailing, disable
         <span className="block break-words text-sm font-semibold text-[#F5F6FF]">{title}</span>
         {description && <span className="mt-1 block break-words text-xs leading-5 text-[#A7B1C8]">{description}</span>}
         {trailing && <span className="mt-2 block text-xs font-medium text-[#B7AAFF]">{trailing}</span>}
-        {status && <span className={`mt-2 inline-flex rounded-full border px-2 py-1 text-[11px] font-semibold ${disabled ? "border-amber-300/20 bg-amber-300/[0.08] text-amber-200" : "border-emerald-300/20 bg-emerald-300/[0.08] text-emerald-200"}`}>{status}</span>}
       </span>
       {!disabled && <span aria-hidden="true" className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-xs ${selected ? "border-[#8B7BFF] bg-[#6855D9] text-white" : "border-[#53617D] text-transparent"}`}>✓</span>}
     </button>
@@ -169,7 +175,7 @@ export default function PayoutFlow({
     try {
       const response = await getPayoutConfiguration();
       if (response?.success === false) throw new Error(response.message || "Unable to load payout configuration.");
-      const availableMethods = normalizeMethods(response);
+      const availableMethods = normalizeMethods(response).filter(isMethodAvailable);
       setMethods(availableMethods);
       setSelectedMethodId((currentId) => {
         const current = availableMethods.find((method) => String(method.id) === String(currentId) && isMethodAvailable(method));
@@ -299,7 +305,7 @@ export default function PayoutFlow({
   return (
     <div className="space-y-6 text-[#F5F6FF]">
       <div>
-        <h2 className="text-lg font-bold sm:text-xl">Withdraw rewards</h2>
+        <h2 className="text-lg font-bold sm:text-xl">Choose your payout</h2>
       </div>
 
       {withdrawalResult ? (
@@ -308,7 +314,7 @@ export default function PayoutFlow({
             <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-emerald-400/10 text-lg text-emerald-300" aria-hidden="true">✓</span>
             <div className="min-w-0">
               <h3 className="font-semibold text-emerald-300">Request submitted</h3>
-
+              <p className="mt-1 text-sm leading-5 text-[#A7B1C8]">Your withdrawal request has been submitted. You can review its status below.</p>
             </div>
           </div>
           <dl className="mt-5 grid grid-cols-1 gap-3 rounded-xl border border-white/[0.06] bg-[#171827]/50 p-4 sm:grid-cols-2">
@@ -328,19 +334,15 @@ export default function PayoutFlow({
             <StepLabel number={methodStep} title="Payout method" complete={Boolean(selectedMethod)} />
             <h3 id="payout-method-heading" className="sr-only">Choose a payout method</h3>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-              {methods.map((method) => {
-                const available = isMethodAvailable(method);
-                return <ChoiceButton
+              {methods.map((method) => (
+                <ChoiceButton
                   key={method.id}
                   selected={String(method.id) === String(selectedMethodId)}
                   onClick={() => handleSelectMethod(method)}
                   title={getMethodName(method)}
-                  description={method.description || (available ? "Receive your reward using this method." : "This payout method is not available yet.")}
-                  status={available ? "Available" : "Coming soon"}
-                  method={method}
-                  disabled={!available}
-                />;
-              })}
+                  description={method.description || "Receive your reward using this method."}
+                />
+              ))}
             </div>
           </section>}
 
@@ -356,7 +358,7 @@ export default function PayoutFlow({
             <StepLabel number={detailsStep} title="Payout details" complete={Boolean(payoutDetails.trim())} />
             <div className="rounded-xl border border-[#343B56] bg-[#171827]/50 p-4 sm:p-5">
               <label htmlFor="payout-details" id="payout-details-heading" className="mb-2 block text-sm font-semibold text-[#E3E5F2]">{detailsField.label}</label>
-              <input id="payout-details" name="payoutDetails" type={detailsField.type} value={payoutDetails} onChange={(event) => { setPayoutDetails(event.target.value); resetRequestState(); }} placeholder={detailsField.placeholder} maxLength={320} autoComplete={detailsField.autoComplete} required disabled={submitting} aria-describedby="payout-details-help" className={fieldClass} />
+              <input id="payout-details" name="payoutDetails" type={detailsField.type} value={payoutDetails} onChange={(event) => { setPayoutDetails(event.target.value); resetRequestState(); }} placeholder={detailsField.placeholder} maxLength={320} autoComplete={detailsField.autoComplete} required disabled={submitting} className={fieldClass} />
 
             </div>
           </section>}
@@ -378,7 +380,7 @@ export default function PayoutFlow({
               <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#292442] text-lg text-[#B7AAFF]" aria-hidden="true">✓</span>
               <div className="min-w-0">
                 <h2 id="withdrawal-confirmation-title" className="text-lg font-bold">Review your request</h2>
-
+                <p id="withdrawal-confirmation-description" className="mt-1 text-sm leading-5 text-[#A7B1C8]">Check the payout amount and recipient details before confirming.</p>
               </div>
             </div>
             <dl className="mt-5 divide-y divide-[#343B56] rounded-xl border border-[#343B56] bg-[#171827]/60 px-4">
