@@ -209,21 +209,15 @@ inspect final result
 commit
 ```
 
-## 5. Automated Regression Baseline
+## 5. Automated CI
 
-Verified project baseline on 8 October 2026:
+The GitHub Actions workflow at [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) is configured to run backend Maven verification with MySQL and Redis services, followed by frontend lint and production-build checks.
 
-```text
-257 / 257 tests passed
-Failures: 0
-Errors: 0
-```
-
-This is the current backend regression baseline after the implemented hardening and documentation work.
+Use the workflow run for the exact commit as the source of truth for pass/fail status. Do not copy historical test counts into project documentation unless they have been re-run and verified for the current commit.
 
 ## 6. Manual API Verification
 
-The verified manual flow covers:
+Use this manual flow when verifying the current commit:
 
 ```text
 Login
@@ -268,13 +262,14 @@ The strongest tests maintain these invariants:
 
 ## 8. Test Completion
 
+Record the result for the exact commit being reviewed. Until the CI workflow has completed, treat automated test status as **not yet verified**. Do not infer current test status from a previous checkpoint or a historical test count.
+
+Recommended record format:
+
 ```text
-CHECKPOINT-02.10
-ARCHITECTURE-DOCUMENTATION-COMPLETE
-
-AUTOMATED-REGRESSION
-257/257 PASS
-
-MANUAL-API-VERIFICATION
-COMPLETED
+Commit: <commit SHA>
+Backend Maven verification: <PASS / FAIL / NOT RUN>
+Frontend lint: <PASS / FAIL / NOT RUN>
+Frontend production build: <PASS / FAIL / NOT RUN>
+CI run: <link to GitHub Actions run>
 ```

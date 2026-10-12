@@ -130,7 +130,7 @@ npm --version
 ### 1. Get the source code
 
 ```bash
-git clone <YOUR_GITHUB_REPOSITORY_URL>
+git clone https://github.com/cws31/wallet-and-withdrawal-system.git
 cd wallet-and-withdrawal-system
 ```
 
@@ -199,6 +199,7 @@ The exact request and response schemas are documented in [`API_DOCUMENTATION.md`
 | Wallet | `GET /api/wallet`, `GET /api/wallet/transactions`, `GET /api/wallet/summary` |
 | Payout configuration | `GET /api/payouts/configuration` |
 | Withdrawals | `POST /api/withdrawals`, `GET /api/withdrawals`, `GET /api/withdrawals/{withdrawalId}` |
+| Admin withdrawal queue | `GET /api/withdrawals/admin?page=1&limit=20` (admin only) |
 | Admin withdrawal actions | `PATCH /api/withdrawals/{withdrawalId}/processing`, `/approve`, `/reject`, and `/cancel` (see API docs for exact paths and permissions) |
 | Reconciliation | `GET /api/admin/reconciliation/wallet/{walletId}` |
 | Health | `GET /actuator/health` |
@@ -239,6 +240,16 @@ npm run lint
 ```
 
 Only report test counts after running the commands against the current commit. A previously recorded test count is not a substitute for a fresh test result.
+
+## Continuous integration
+
+GitHub Actions is configured in [`.github/workflows/ci.yml`](.github/workflows/ci.yml). On pushes to `main`/`master`, pull requests, and manual runs, it:
+
+- runs backend Maven verification/tests with Java 21, MySQL 8.4, and Redis 7;
+- installs the locked frontend dependencies with `npm ci`;
+- runs frontend lint and a production build.
+
+The workflow reports the result of the current commit. Do not describe the build as passing until the Actions run completes successfully.
 
 ## Security notes
 

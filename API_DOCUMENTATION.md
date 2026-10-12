@@ -792,6 +792,29 @@ The original transaction is preserved.
 
 ---
 
+
+## 9.8 List Withdrawals for Administrators
+
+```http
+GET /api/withdrawals/admin?page=1&limit=20
+```
+
+### Authentication and authorization
+
+Requires a valid JWT for a user with the `ADMIN` role.
+
+### Query parameters
+
+| Parameter | Required | Default | Notes |
+|---|---|---|---|
+| `page` | No | `1` | One-based page number. Values below `1` are normalized to the first page. |
+| `limit` | No | `20` | Page size is bounded to `1`–`100`. |
+| `status` | No | All statuses | Optional `PENDING`, `PROCESSING`, `APPROVED`, `REJECTED`, or `CANCELLED` filter. |
+
+Returns a paginated administrator view with withdrawal and associated user details. Do not expose this response to ordinary users because it contains other users' withdrawal information.
+
+---
+
 # 10. Withdrawal Lifecycle
 
 Statuses:
@@ -1700,45 +1723,8 @@ The implementation remains the authoritative source for API behavior.
 
 # 31. Verification Status
 
-Current backend verification:
+This file documents the API contract and expected usage; it is not a test report. Automated and manual verification status must be recorded against the exact commit being reviewed.
 
-```text
-Automated regression:
-257 / 257 PASS
+Check the repository's GitHub Actions run for the current backend and frontend results. Do not treat historical test totals, demo-data notes, or old checkpoint labels as evidence that the current commit passed.
 
-Failures:
-0
-
-Errors:
-0
-
-Manual API verification:
-COMPLETED
-
-Demo/seed data:
-VERIFIED
-
-Postman collection:
-COMPLETED
-
-Architecture documentation:
-COMPLETED
-
-Database documentation:
-COMPLETED
-
-Security documentation:
-COMPLETED
-
-Testing documentation:
-COMPLETED
-
-Reconciliation documentation:
-COMPLETED
-```
-
-Backend status:
-
-```text
-READY FOR FRONTEND / DEPLOYMENT / DEMONSTRATION
-```
+For local checks, follow the commands in the root `README.md` and the testing guide at [`docs/testing.md`](docs/testing.md).

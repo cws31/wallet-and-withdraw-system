@@ -6,6 +6,7 @@
 **/.env.*
 !**/.env.example
 
+
 **/target/
 *.class
 *.jar
@@ -13,20 +14,22 @@
 hs_err_pid*
 replay_pid*
 
+
 **/node_modules/
 **/dist/
 **/coverage/
 .npm/
+
 
 *.log
 logs/
 *.pid
 *.seed
 
+
 .DS_Store
 Thumbs.db
 Desktop.ini
-
 
 .idea/
 .vscode/

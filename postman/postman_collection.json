@@ -547,6 +547,40 @@
               ]
             }
           }
+        },
+        {
+          "name": "Admin List Withdrawals",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/withdrawals/admin?page=1&limit=20",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "withdrawals",
+                "admin"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
+            },
+            "description": "Admin-only paginated withdrawal queue. Optionally add a status query parameter such as PENDING or PROCESSING."
+          }
         }
       ]
     },
