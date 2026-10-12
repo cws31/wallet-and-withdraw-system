@@ -7,7 +7,8 @@ import com.veloop.rewards.wallet.enums.TransactionType;
 import com.veloop.rewards.wallet.repository.WalletTransactionRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
+import com.veloop.rewards.wallet.enums.TransactionType;
+import java.util.Collection;
 import com.veloop.rewards.common.response.PageResponse;
 import com.veloop.rewards.wallet.dto.WalletTransactionResponse;
 import org.springframework.data.domain.Page;
@@ -94,5 +95,32 @@ public class WalletTransactionService {
     public long countTransactions(Long userId) {
 
         return transactionRepository.countByUserId(userId);
+    }
+
+    @Transactional(readOnly = true)
+    public PageResponse<WalletTransactionResponse> getTransactionsByTypes(
+            Long userId,
+            Collection<TransactionType> transactionTypes,
+            Pageable pageable) {
+
+        if (transactionTypes == null || transactionTypes.isEmpty()) {
+            return getTransactions(userId, pageable);
+        }
+
+        Page<WalletTransactionResponse> page = transactionRepository
+                .findByUserIdAndTransactionTypeInOrderByCreatedAtDesc(
+                        userId,
+                        transactionTypes,
+                        pageable)
+                .map(WalletTransactionResponse::from);
+
+        return new PageResponse<>(
+                page.getContent(),
+                page.getNumber() + 1,
+                page.getSize(),
+                page.getTotalElements(),
+                page.getTotalPages(),
+                page.hasNext(),
+                page.hasPrevious());
     }
 }

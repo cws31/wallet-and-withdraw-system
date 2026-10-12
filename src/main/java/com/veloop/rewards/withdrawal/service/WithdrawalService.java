@@ -31,7 +31,7 @@ import com.veloop.rewards.wallet.enums.Currency;
 import com.veloop.rewards.wallet.enums.TransactionType;
 import com.veloop.rewards.wallet.repository.WalletTransactionRepository;
 import com.veloop.rewards.wallet.service.WalletService;
-
+import com.veloop.rewards.withdrawal.dto.AdminWithdrawalResponse;
 import com.veloop.rewards.withdrawal.dto.WithdrawalCreateRequest;
 import com.veloop.rewards.withdrawal.dto.WithdrawalResponse;
 import com.veloop.rewards.withdrawal.entity.Withdrawal;
@@ -299,8 +299,29 @@ public class WithdrawalService {
                         Pageable pageable) {
 
                 Page<WithdrawalResponse> page = withdrawalRepository
-                                .findByUserIdOrderByCreatedAtDesc(
+                                .findByUserIdOrderByCreatedAtDesc(userId, pageable)
+                                .map(this::toResponse);
+
+                return new PageResponse<>(
+                                page.getContent(),
+                                page.getNumber() + 1,
+                                page.getSize(),
+                                page.getTotalElements(),
+                                page.getTotalPages(),
+                                page.hasNext(),
+                                page.hasPrevious());
+        }
+
+        @Transactional(readOnly = true)
+        public PageResponse<WithdrawalResponse> getWithdrawalsByStatus(
+                        Long userId,
+                        WithdrawalStatus status,
+                        Pageable pageable) {
+
+                Page<WithdrawalResponse> page = withdrawalRepository
+                                .findByUserIdAndStatusOrderByCreatedAtDesc(
                                                 userId,
+                                                status,
                                                 pageable)
                                 .map(this::toResponse);
 
@@ -842,4 +863,52 @@ public class WithdrawalService {
 
                 return response;
         }
+
+        @Transactional(readOnly = true)
+        public PageResponse<AdminWithdrawalResponse> getAllWithdrawalsForAdmin(
+                        WithdrawalStatus status,
+                        Pageable pageable) {
+
+                Page<Withdrawal> page = status == null
+                                ? withdrawalRepository.findAllByOrderByCreatedAtDesc(pageable)
+                                : withdrawalRepository.findByStatusOrderByCreatedAtDesc(
+                                                status, pageable);
+
+                Page<AdminWithdrawalResponse> mappedPage = page.map(this::toAdminResponse);
+
+                return new PageResponse<>(
+                                mappedPage.getContent(),
+                                mappedPage.getNumber() + 1,
+                                mappedPage.getSize(),
+                                mappedPage.getTotalElements(),
+                                mappedPage.getTotalPages(),
+                                mappedPage.hasNext(),
+                                mappedPage.hasPrevious());
+        }
+
+        private AdminWithdrawalResponse toAdminResponse(Withdrawal withdrawal) {
+                WithdrawalResponse response = toResponse(withdrawal);
+
+                return new AdminWithdrawalResponse(
+                                withdrawal.getUser().getId(),
+                                withdrawal.getUser().getName(),
+                                withdrawal.getUser().getEmail(),
+                                response.getWithdrawalId(),
+                                response.getPayoutMethodId(),
+                                response.getPayoutMethod(),
+                                response.getPayoutOptionId(),
+                                response.getCurrency(),
+                                response.getCurrencyAmount(),
+                                response.getPayoutAmount(),
+                                response.getPayoutDetails(),
+                                response.getStatus(),
+                                response.getRejectionReason(),
+                                response.getReviewNote(),
+                                response.getTransactionId(),
+                                response.getRequestedAt(),
+                                response.getProcessedAt(),
+                                response.getCreatedAt(),
+                                response.getUpdatedAt());
+        }
+
 }

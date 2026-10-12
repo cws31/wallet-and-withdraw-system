@@ -2,8 +2,10 @@ package com.veloop.rewards.withdrawal.controller;
 
 import com.veloop.rewards.common.response.ApiResponse;
 import com.veloop.rewards.common.response.PageResponse;
+import com.veloop.rewards.withdrawal.dto.AdminWithdrawalResponse;
 import com.veloop.rewards.withdrawal.dto.WithdrawalCreateRequest;
 import com.veloop.rewards.withdrawal.dto.WithdrawalResponse;
+import com.veloop.rewards.withdrawal.enums.WithdrawalStatus;
 import com.veloop.rewards.withdrawal.service.WithdrawalService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
@@ -55,11 +57,13 @@ public class WithdrawalController {
         }
 
         @GetMapping
-        @Operation(summary = "Get withdrawal history", description = "Returns paginated withdrawal history for the authenticated user.", security = @SecurityRequirement(name = "bearerAuth"))
+        @Operation(summary = "Get withdrawal history", description = "Returns paginated withdrawal history for the authenticated user. "
+                        + "An optional status parameter filters the results.", security = @SecurityRequirement(name = "bearerAuth"))
         public ResponseEntity<ApiResponse<PageResponse<WithdrawalResponse>>> getWithdrawals(
                         Authentication authentication,
                         @RequestParam(defaultValue = "1") int page,
-                        @RequestParam(defaultValue = "20") int limit) {
+                        @RequestParam(defaultValue = "20") int limit,
+                        @RequestParam(required = false) WithdrawalStatus status) {
 
                 Long userId = Long.valueOf(authentication.getName());
 
@@ -69,13 +73,20 @@ public class WithdrawalController {
                 PageRequest pageable = PageRequest.of(
                                 safePage,
                                 safeLimit,
-                                Sort.by(
-                                                Sort.Direction.DESC,
-                                                "createdAt"));
+                                Sort.by(Sort.Direction.DESC, "createdAt"));
 
-                PageResponse<WithdrawalResponse> withdrawals = withdrawalService.getWithdrawals(
-                                userId,
-                                pageable);
+                PageResponse<WithdrawalResponse> withdrawals;
+
+                if (status == null) {
+                        withdrawals = withdrawalService.getWithdrawals(
+                                        userId,
+                                        pageable);
+                } else {
+                        withdrawals = withdrawalService.getWithdrawalsByStatus(
+                                        userId,
+                                        status,
+                                        pageable);
+                }
 
                 return ResponseEntity.ok(
                                 ApiResponse.success(
@@ -180,4 +191,30 @@ public class WithdrawalController {
                                                 "Withdrawal cancelled and balance reversed",
                                                 response));
         }
+
+        @PreAuthorize("hasRole('ADMIN')")
+        @GetMapping("/admin")
+        @Operation(summary = "List all withdrawals for administrators", description = "Returns paginated withdrawals with user details. Admin only.", security = @SecurityRequirement(name = "bearerAuth"))
+        public ResponseEntity<ApiResponse<PageResponse<AdminWithdrawalResponse>>> getAllWithdrawalsForAdmin(
+                        @RequestParam(defaultValue = "1") int page,
+                        @RequestParam(defaultValue = "20") int limit,
+                        @RequestParam(required = false) WithdrawalStatus status) {
+
+                int safePage = Math.max(page - 1, 0);
+                int safeLimit = Math.min(Math.max(limit, 1), 100);
+
+                PageRequest pageable = PageRequest.of(
+                                safePage,
+                                safeLimit,
+                                Sort.by(Sort.Direction.DESC, "createdAt"));
+
+                PageResponse<AdminWithdrawalResponse> withdrawals = withdrawalService.getAllWithdrawalsForAdmin(status,
+                                pageable);
+
+                return ResponseEntity.ok(
+                                ApiResponse.success(
+                                                "Admin withdrawal list retrieved successfully",
+                                                withdrawals));
+        }
+
 }
