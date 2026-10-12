@@ -96,7 +96,6 @@ export default function AdminWithdrawals() {
   });
 
   const [status, setStatus] = useState("ALL");
-  const [search, setSearch] = useState("");
   const [selected, setSelected] = useState(null);
   const [showRecipientDetails, setShowRecipientDetails] = useState(false);
 
@@ -273,37 +272,9 @@ export default function AdminWithdrawals() {
     setError("");
   }
 
-  const query = search.trim().toLowerCase();
-
-  // Search applies to the currently loaded server page.
-  // Pending requests appear first; older pending requests come before newer ones.
-  const visibleWithdrawals = [...withdrawals]
-    .filter((item) => {
-      if (!query) return true;
-
-      const searchableValues = [
-        item.withdrawalId,
-        item.userEmail,
-        item.userName,
-        item.userId,
-      ];
-
-      return searchableValues.some((value) =>
-        String(value ?? "").toLowerCase().includes(query)
-      );
-    })
-    .sort((a, b) => {
-      if (a.status === "PENDING" && b.status !== "PENDING") return -1;
-      if (a.status !== "PENDING" && b.status === "PENDING") return 1;
-
-      const dateA = new Date(a.requestedAt || a.createdAt).getTime();
-      const dateB = new Date(b.requestedAt || b.createdAt).getTime();
-
-      return (
-        (Number.isFinite(dateA) ? dateA : 0) -
-        (Number.isFinite(dateB) ? dateB : 0)
-      );
-    });
+  // Preserve the exact page and ordering returned by the backend.
+  // Search is omitted because the backend admin endpoint has no search parameter.
+  const visibleWithdrawals = withdrawals;
 
   if (!localStorage.getItem("veloop_token")) {
     return null;
@@ -336,14 +307,6 @@ export default function AdminWithdrawals() {
     );
   }
 
-  const pendingCount = withdrawals.filter(
-    (item) => item.status === "PENDING"
-  ).length;
-
-  const processingCount = withdrawals.filter(
-    (item) => item.status === "PROCESSING"
-  ).length;
-
   return (
     <main className="min-h-screen bg-[#080d1b] text-white">
       <header className="border-b border-white/10 bg-[#0d1426]">
@@ -357,13 +320,16 @@ export default function AdminWithdrawals() {
               Admin Dashboard
             </h1>
 
-            <p className="mt-1 text-sm text-slate-400">
-              Withdrawal review and management
-            </p>
           </div>
 
           <div className="flex flex-wrap gap-2">
-          
+            <button
+              type="button"
+              onClick={() => navigate("/admin/reconciliation")}
+              className="rounded-xl border border-white/15 px-4 py-2.5 text-sm font-semibold transition hover:bg-white/5"
+            >
+              Wallet reconciliation
+            </button>
 
             <button
               type="button"
@@ -412,63 +378,21 @@ export default function AdminWithdrawals() {
           </div>
         )}
 
-        <section className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-          <div className="rounded-2xl border border-white/10 bg-[#111a2e] p-5">
-            <p className="text-sm text-slate-400">Total matching requests</p>
-            <p className="mt-3 text-3xl font-bold">
-              {loading ? "—" : pagination.totalElements}
-            </p>
-            <p className="mt-2 text-xs text-slate-500">
-              Based on the selected status filter
-            </p>
-          </div>
-
-          <div className="rounded-2xl border border-amber-500/20 bg-[#111a2e] p-5">
-            <p className="text-sm text-slate-400">Pending on this page</p>
-            <p className="mt-3 text-3xl font-bold text-amber-300">
-              {loading ? "—" : pendingCount}
-            </p>
-            <p className="mt-2 text-xs text-slate-500">
-              Awaiting review
-            </p>
-          </div>
-
-          <div className="rounded-2xl border border-blue-500/20 bg-[#111a2e] p-5">
-            <p className="text-sm text-slate-400">Processing on this page</p>
-            <p className="mt-3 text-3xl font-bold text-blue-300">
-              {loading ? "—" : processingCount}
-            </p>
-            <p className="mt-2 text-xs text-slate-500">
-              Currently being reviewed
-            </p>
-          </div>
-        </section>
-
         <section className="overflow-hidden rounded-2xl border border-white/10 bg-[#111a2e]">
           <div className="flex flex-col gap-4 border-b border-white/10 p-5">
             <div>
               <h2 className="text-lg font-bold">Withdrawal Requests</h2>
-              <p className="mt-1 text-sm text-slate-400">
-                Review requests submitted by users. Pending requests are
-                prioritized, with older pending requests shown first.
-              </p>
             </div>
 
-            <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-              <label className="flex flex-col gap-2 text-sm text-slate-400 lg:flex-1">
-                Search withdrawals
-                <input
-                  type="search"
-                  value={search}
-                  onChange={(event) => setSearch(event.target.value)}
-                  placeholder="Search ID, email, name, or user ID"
-                  aria-label="Search withdrawal requests"
-                  className="w-full rounded-xl border border-white/15 bg-[#080d1b] px-3 py-2.5 text-white outline-none placeholder:text-slate-500 focus:border-indigo-400"
-                />
-              </label>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-sm text-slate-400">
+                {loading
+                  ? "Loading requests…"
+                  : `${pagination.totalElements.toLocaleString("en-IN")} request${pagination.totalElements === 1 ? "" : "s"}`}
+              </p>
 
-              <label className="flex flex-col gap-2 text-sm text-slate-400">
-                Filter by status
+              <label className="flex items-center gap-3 text-sm text-slate-400">
+                <span>Status</span>
                 <select
                   value={status}
                   onChange={(event) => changeStatus(event.target.value)}
@@ -481,16 +405,6 @@ export default function AdminWithdrawals() {
                   ))}
                 </select>
               </label>
-
-              {search && (
-                <button
-                  type="button"
-                  onClick={() => setSearch("")}
-                  className="rounded-xl border border-white/15 px-4 py-2.5 text-sm font-medium transition hover:bg-white/5"
-                >
-                  Clear search
-                </button>
-              )}
             </div>
           </div>
 
@@ -503,7 +417,7 @@ export default function AdminWithdrawals() {
             <div className="px-5 py-16 text-center">
               <p className="font-semibold">No withdrawal requests found</p>
               <p className="mt-2 text-sm text-slate-400">
-                Try another search, status filter, or refresh the list.
+                There are no requests for this status.
               </p>
             </div>
           ) : (

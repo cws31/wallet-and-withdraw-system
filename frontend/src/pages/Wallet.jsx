@@ -224,12 +224,12 @@ function ErrorState({ message, onRetry }) {
 
 function CurrencyCard({ currency, value, loading, error }) {
   return (
-    <article className="min-w-0 rounded-[20px] border border-[#343B56] bg-[#202438] p-4 transition hover:border-[#575078] sm:p-5">
+    <article className="min-w-0 rounded-[18px] border border-[#343B56] bg-[#202438] p-3.5 transition hover:border-[#575078] sm:p-4">
       <div className="flex items-center gap-3">
         <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-lg" style={{ color: currency.color, backgroundColor: `${currency.color}18` }} aria-hidden="true">{currency.icon}</span>
         <h3 className="text-sm font-semibold text-[#C7CDE0]">{currency.label}</h3>
       </div>
-      <p className="mt-4 break-words text-2xl font-bold sm:text-3xl" aria-live="polite">{loading || error ? "—" : formatAmount(value)}</p>
+      <p className="mt-3 break-words text-2xl font-bold sm:text-3xl" aria-live="polite">{loading || error ? "—" : formatAmount(value)}</p>
       <p className="mt-1 text-xs text-[#8F9BB5]">Available balance</p>
     </article>
   );
@@ -586,33 +586,33 @@ export default function Wallet() {
 
   return (
     <main className="min-h-screen overflow-x-clip bg-[#171827] px-3 py-4 text-[#F5F6FF] sm:px-6 sm:py-6">
-      <div className="mx-auto w-full max-w-[1440px] space-y-6 sm:space-y-7">
+      <div className="mx-auto w-full max-w-[1360px] space-y-5 sm:space-y-6">
         <WalletHeader onLogout={handleLogout} onRefresh={refreshAll} refreshing={refreshing} />
 
-        <section className="grid grid-cols-1 items-stretch gap-4 lg:grid-cols-[minmax(0,1.5fr)_minmax(280px,0.8fr)]" aria-labelledby="wallet-overview-title">
-          <div className="relative flex min-w-0 flex-col justify-between overflow-hidden rounded-[26px] border border-[#5141AD]/60 bg-gradient-to-br from-[#242044] via-[#1C2039] to-[#171D32] p-5 sm:p-7 lg:p-8">
+        <section className="grid grid-cols-1 items-start gap-4 xl:grid-cols-[minmax(0,1.4fr)_minmax(360px,0.9fr)]" aria-labelledby="wallet-overview-title">
+          <div className="relative flex min-w-0 flex-col justify-between overflow-hidden rounded-[24px] border border-[#5141AD]/60 bg-gradient-to-br from-[#242044] via-[#1C2039] to-[#171D32] p-5 sm:p-6 xl:p-7">
             <div>
               <span className="rounded-lg border border-[#8B7BFF]/25 bg-[#7567FF]/10 px-2.5 py-1 text-xs font-semibold text-[#C5BCFF]">MY REWARDS</span>
-              <p className="mt-7 text-sm text-[#A7B1C8]">Welcome back,</p>
+              <p className="mt-5 text-sm text-[#A7B1C8]">Welcome back,</p>
               <h2 id="wallet-overview-title" className="mt-1 break-words text-xl font-bold sm:text-2xl">{displayName}</h2>
-              <p className="mt-7 text-sm font-medium text-[#B7AAFF]">Available VEs balance</p>
+              <p className="mt-5 text-sm font-medium text-[#B7AAFF]">Available VEs balance</p>
               <div className="mt-2 flex flex-wrap items-baseline gap-3">
                 <p className="break-words text-4xl font-bold sm:text-5xl" aria-live="polite">{walletLoading || walletError ? "—" : formatAmount(wallet?.ves ?? wallet?.vesBalance)}</p>
                 <span className="text-sm font-semibold text-[#B7AAFF]">VEs</span>
               </div>
             </div>
-            <button type="button" onClick={() => navigate("/payout")} className="mt-8 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#6855D9] px-5 py-3 text-sm font-semibold transition hover:bg-[#7968E8] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B7AAFF] focus-visible:ring-offset-2 focus-visible:ring-offset-[#242044] sm:w-auto sm:self-start">
+            <button type="button" onClick={() => navigate("/payout")} className="mt-6 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#6855D9] px-5 py-3 text-sm font-semibold transition hover:bg-[#7968E8] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B7AAFF] focus-visible:ring-offset-2 focus-visible:ring-offset-[#242044] sm:w-auto sm:self-start">
               Redeem rewards <span aria-hidden="true">→</span>
             </button>
           </div>
 
-          <aside className="rounded-[26px] border border-[#343B56] bg-[#202438] p-5 sm:p-6" aria-labelledby="balance-overview-title">
+          <aside className="min-w-0 rounded-[24px] border border-[#343B56] bg-[#202438] p-4 sm:p-5" aria-labelledby="balance-overview-title">
             <div className="flex items-center justify-between gap-3">
               <h2 id="balance-overview-title" className="font-semibold">Other balances</h2>
               <span className="rounded-lg bg-white/[0.04] px-2.5 py-1 text-xs text-[#A7B1C8]">Live data</span>
             </div>
             <p className="mt-2 text-sm text-[#A7B1C8]">Balances provided by your wallet.</p>
-            <div className="mt-5 grid grid-cols-1 gap-4 min-[400px]:grid-cols-2 lg:grid-cols-1">
+            <div className="mt-4 grid grid-cols-1 gap-3 min-[480px]:grid-cols-2">
               {secondaryCurrencies.map((currency) => (
                 <CurrencyCard key={currency.key} currency={currency} value={wallet?.[currency.key]} loading={walletLoading} error={walletError} />
               ))}

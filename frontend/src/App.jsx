@@ -1,9 +1,10 @@
-
 import { Navigate, Route, Routes } from "react-router-dom";
+
 import Login from "./pages/Login";
 import Wallet from "./pages/Wallet";
 import Payout from "./pages/Payout";
 import AdminWithdrawals from "./pages/AdminWithdrawals";
+import AdminReconciliation from "./pages/AdminReconciliation";
 
 function ProtectedRoute({ children }) {
   const token = localStorage.getItem("veloop_token");
@@ -62,11 +63,22 @@ export default function App() {
         }
       />
 
+      {/* Admin withdrawal management */}
       <Route
         path="/admin/withdrawals"
         element={
           <AdminRoute>
             <AdminWithdrawals />
+          </AdminRoute>
+        }
+      />
+
+      {/* Admin wallet reconciliation */}
+      <Route
+        path="/admin/reconciliation"
+        element={
+          <AdminRoute>
+            <AdminReconciliation />
           </AdminRoute>
         }
       />
