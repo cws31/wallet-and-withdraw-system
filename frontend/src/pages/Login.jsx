@@ -3,6 +3,32 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { loginUser } from "../api/authApi";
 
+// Enable only during manager review.
+// Set VITE_ENABLE_DEMO_ACCOUNTS=true in the frontend .env file.
+const DEMO_ACCOUNTS_ENABLED =
+  import.meta.env.VITE_ENABLE_DEMO_ACCOUNTS === "true";
+
+const DEMO_USERS = Array.from({ length: 10 }, (_, index) => {
+  const number = index + 1;
+
+  return {
+    label: `Demo User ${number}`,
+    email:
+      number === 1
+        ? "demo@veloop.test"
+        : `demo.user${String(number).padStart(2, "0")}@veloop.test`,
+    password: "Demo@12345",
+    role: "USER",
+  };
+});
+
+const DEMO_ADMIN = {
+  label: "Demo Admin",
+  email: "admin@veloop.test",
+  password: "Admin@12345",
+  role: "ADMIN",
+};
+
 export default function Login() {
   const navigate = useNavigate();
 
@@ -10,6 +36,14 @@ export default function Login() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [showDemoAccounts, setShowDemoAccounts] = useState(false);
+
+  function useDemoAccount(account) {
+    setEmail(account.email);
+    setPassword(account.password);
+    setError("");
+    setShowDemoAccounts(false);
+  }
 
   async function handleSubmit(event) {
     event.preventDefault();
@@ -81,6 +115,31 @@ export default function Login() {
     } finally {
       setLoading(false);
     }
+  }
+
+  function DemoAccountRow({ account }) {
+    return (
+      <div className="flex flex-col gap-3 rounded-xl border border-white/10 bg-[#252738] p-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
+          <p className="font-semibold text-white">{account.label}</p>
+          <p className="mt-1 break-all text-sm text-gray-300">
+            {account.email}
+          </p>
+          <p className="mt-1 text-xs text-gray-400">
+            Role: {account.role}
+          </p>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => useDemoAccount(account)}
+          disabled={loading}
+          className="shrink-0 rounded-lg bg-[#3980F5] px-4 py-2 text-sm font-semibold text-white hover:bg-[#2D70E0] disabled:opacity-50"
+        >
+          Use credentials
+        </button>
+      </div>
+    );
   }
 
   return (
@@ -192,6 +251,68 @@ export default function Login() {
               {loading ? "Logging in..." : "Login"}
             </button>
           </form>
+
+          {DEMO_ACCOUNTS_ENABLED && (
+            <div className="mt-8 border-t border-white/15 pt-6">
+              <div className="text-center">
+                <p className="text-lg font-semibold">
+                  Manager Verification
+                </p>
+                <p className="mt-2 text-sm leading-6 text-gray-300">
+                  Use a seeded demo account to verify the wallet,
+                  transactions, payout options, withdrawals and admin
+                  workflows.
+                </p>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    setShowDemoAccounts((previous) => !previous)
+                  }
+                  aria-expanded={showDemoAccounts}
+                  className="mt-4 rounded-xl border border-blue-400/50 px-5 py-3 text-sm font-semibold text-blue-200 hover:bg-blue-500/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
+                >
+                  {showDemoAccounts
+                    ? "Hide demo accounts"
+                    : "View demo accounts"}
+                </button>
+              </div>
+
+              {showDemoAccounts && (
+                <div className="mt-5 space-y-6">
+                  <div>
+                    <h3 className="mb-3 text-sm font-semibold uppercase tracking-wider text-gray-300">
+                      User accounts (10)
+                    </h3>
+
+                    <div className="space-y-3">
+                      {DEMO_USERS.map((account) => (
+                        <DemoAccountRow
+                          key={account.email}
+                          account={account}
+                        />
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <h3 className="mb-3 text-sm font-semibold uppercase tracking-wider text-gray-300">
+                      Administrator
+                    </h3>
+
+                    <DemoAccountRow account={DEMO_ADMIN} />
+
+                    <p className="mt-3 text-xs leading-5 text-amber-200">
+                      Demo credentials are public to anyone who can access
+                      this page. Enable this only for a controlled review,
+                      and disable it afterward. Never use these credentials
+                      in production.
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </section>
     </main>
