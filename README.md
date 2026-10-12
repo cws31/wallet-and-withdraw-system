@@ -1,123 +1,152 @@
+<div align="center">
+
 # Wallet and Withdrawal System
 
-A full-stack rewards-wallet application built around a Spring Boot REST API and a React frontend. The backend is the source of truth for wallet balances, ledger entries, payout configuration, withdrawal requests, and financial audit operations.
+**A backend-driven rewards wallet and withdrawal application**
 
-> **Project status:** Development/demo application. Review the current test results and deployment configuration before treating any feature as production-ready. No production payout-provider integration is claimed by this repository.
+Built with Java · Spring Boot · MySQL · React
 
-## Contents
+[Features](#features) · [Architecture](#architecture) · [Getting Started](#getting-started) · [API](#api-overview) · [Security](#security)
 
-- [Features](#features)
-- [Technology stack](#technology-stack)
-- [Architecture](#architecture)
-- [Repository structure](#repository-structure)
-- [Prerequisites](#prerequisites)
-- [Local setup](#local-setup)
-- [API overview](#api-overview)
-- [Database migrations](#database-migrations)
-- [Testing](#testing)
-- [Security notes](#security-notes)
-- [Documentation](#documentation)
-- [Current limitations](#current-limitations)
+![Java](https://img.shields.io/badge/Java-21-ED8B00?logo=openjdk&logoColor=white)
+![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.5.16-6DB33F?logo=springboot&logoColor=white)
+![MySQL](https://img.shields.io/badge/MySQL-8.x-4479A1?logo=mysql&logoColor=white)
+![React](https://img.shields.io/badge/React-JavaScript-61DAFB?logo=react&logoColor=black)
+![Vite](https://img.shields.io/badge/Vite-Frontend-646CFF?logo=vite&logoColor=white)
+
+</div>
+
+---
+
+> **Project status:** Development / demonstration project. Verify current test results and deployment configuration before treating features as production-ready. This repository does not claim a live payout-provider integration.
+
+## About
+
+Wallet and Withdrawal System is a full-stack rewards wallet application built around a Spring Boot REST API and a React frontend. The backend is the source of truth for wallet balances, transaction ledger entries, payout configuration, withdrawal requests, and financial audit operations.
 
 ## Features
 
-### Wallet and ledger
+<table>
+  <tr>
+    <td width="50%" valign="top">
+      <h3>Wallet &amp; Ledger</h3>
+      <ul>
+        <li>VEs, SVEs, Gems, Tokens, and Spins</li>
+        <li>Wallet balances, summaries, and transaction history</li>
+        <li>Ledger entries for wallet changes</li>
+        <li>Server-side balance and ownership validation</li>
+      </ul>
+    </td>
+    <td width="50%" valign="top">
+      <h3>Withdrawals &amp; Payouts</h3>
+      <ul>
+        <li>Backend-provided payout methods and options</li>
+        <li>Withdrawal request and status management</li>
+        <li>Idempotency controls against duplicate requests</li>
+        <li>Administrative processing and cancellation flows</li>
+      </ul>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <h3>Security &amp; Risk Controls</h3>
+      <ul>
+        <li>JWT authentication and role-based authorization</li>
+        <li>BCrypt password hashing and request validation</li>
+        <li>Redis-backed rate limiting</li>
+        <li>Fraud/risk evaluation and audit records</li>
+      </ul>
+    </td>
+    <td width="50%" valign="top">
+      <h3>Financial Integrity</h3>
+      <ul>
+        <li>Wallet-versus-ledger reconciliation</li>
+        <li>Audit-friendly transaction history</li>
+        <li>Flyway-managed database migrations</li>
+        <li>Health and metrics endpoints through Actuator</li>
+      </ul>
+    </td>
+  </tr>
+</table>
 
-- Supports VEs, SVEs, Gems, Tokens, and Spins.
-- Provides wallet balances, transaction history, and wallet summary APIs.
-- Records wallet changes in a transaction ledger.
-- Performs server-side balance and ownership checks for wallet operations.
+## Technology Stack
 
-### Payouts and withdrawals
-
-- Exposes payout configuration from the backend rather than relying on frontend-defined payout values.
-- Supports withdrawal requests and withdrawal status management.
-- Includes idempotency handling to help prevent duplicate withdrawal operations.
-- Includes administrative processing, approval, rejection, and cancellation flows.
-- Uses compensating ledger entries for applicable reversal flows rather than deleting financial history.
-
-### Security and operational controls
-
-- Spring Security with JWT-based authentication and role-based authorization.
-- BCrypt password hashing and request validation.
-- Redis-backed rate limiting.
-- Fraud/risk evaluation and audit records.
-- Wallet-versus-ledger reconciliation for administrative investigation.
-- Spring Boot Actuator health and metrics endpoints, plus request/correlation tracing support.
-
-## Technology stack
-
-| Area | Technology |
+| Area | Technologies |
 |---|---|
-| Backend language | Java 21 |
-| Backend framework | Spring Boot 3.5.16 |
-| Build | Maven / Maven Wrapper |
+| Backend | Java 21, Spring Boot 3.5.16, Maven |
 | API | Spring Web, REST, Springdoc OpenAPI |
 | Persistence | Spring Data JPA, Hibernate |
-| Database | MySQL 8.x |
-| Schema migrations | Flyway |
-| Authentication | Spring Security, JWT (JJWT) |
-| Password hashing | BCrypt |
+| Database | MySQL 8.x, Flyway |
+| Security | Spring Security, JWT (JJWT), BCrypt |
 | Rate limiting | Redis |
-| Frontend | React 19, JavaScript, Vite |
-| Styling | Tailwind CSS 4 |
-| HTTP client and routing | Axios, React Router |
-| Backend tests | JUnit 5, Mockito, Spring Boot Test, MockMvc, integration tests |
+| Frontend | React, JavaScript, Vite |
+| Styling and routing | Tailwind CSS, React Router |
+| HTTP client | Axios |
+| Testing | JUnit 5, Mockito, Spring Boot Test, MockMvc |
 
 ## Architecture
 
 ```text
-Browser (React / Vite)
-        |
-        | HTTP + JWT
-        v
-Spring Security filters
-        |
-        v
-REST controllers
-        |
-        v
-Application/domain services
-  |       |        |          |
- Auth   Wallet   Withdrawal  Fraud / Reconciliation
-          |         |
-          v         v
-      JPA repositories / audit / idempotency
-                    |
-                    v
-                  MySQL
+┌──────────────────────────────┐
+│       React Frontend         │
+│        Vite / Browser        │
+└──────────────┬───────────────┘
+               │ HTTP + JWT
+               ▼
+┌──────────────────────────────┐
+│       Spring Security        │
+│ Authentication / Access     │
+└──────────────┬───────────────┘
+               ▼
+┌──────────────────────────────┐
+│       REST Controllers       │
+└──────────────┬───────────────┘
+               ▼
+┌──────────────────────────────┐
+│      Application Services    │
+│ Auth · Wallet · Withdrawals  │
+│ Payouts · Risk · Reconcile   │
+└──────────────┬───────────────┘
+               ▼
+┌──────────────────────────────┐
+│ Spring Data JPA / Hibernate  │
+└──────────────┬───────────────┘
+               ▼
+┌──────────────────────────────┐
+│            MySQL             │
+└──────────────────────────────┘
 
-Redis: rate limiting
-Flyway: database schema migrations
-Actuator: health and metrics
+Redis     → Rate limiting
+Flyway    → Database migrations
+Actuator  → Health and metrics
 ```
 
-The frontend is a client only. It must not be trusted to supply authoritative wallet balances, withdrawal costs, ownership, or payout values. The backend should resolve and validate those values from persisted state and server-side rules.
+**Core principle:** The frontend is a client, not the authority. Wallet balances, payout values, ownership, and withdrawal eligibility must be validated by the backend using persisted state and server-side rules.
 
-## Repository structure
+## Repository Structure
 
 ```text
 wallet-and-withdrawal-system/
-├── backend/                 # Spring Boot application, tests and migrations
-├── frontend/                # React/Vite user interface
-├── docs/                    # Architecture and domain/operations documentation
-├── postman/                 # Postman API collection
-├── API_DOCUMENTATION.md     # API endpoint reference
-├── README.md                # Project overview and setup
+├── backend/                  # Spring Boot application, tests, migrations
+├── frontend/                 # React / Vite application
+├── docs/                     # Architecture and technical documentation
+├── postman/                  # Postman API collection
+├── API_DOCUMENTATION.md      # API endpoint reference
+├── README.md
 └── .gitignore
 ```
 
-## Prerequisites
+## Getting Started
 
-Install the following before starting locally:
+### Prerequisites
 
 - Java 21
 - MySQL 8.x
-- Redis, for the configured rate-limiting functionality
-- Node.js compatible with the Vite version in `frontend/package.json`
+- Redis, for configured rate-limiting functionality
+- Node.js compatible with the frontend dependencies
 - npm
 
-You can check installed versions with:
+Check your installed versions:
 
 ```bash
 java -version
@@ -125,101 +154,94 @@ node --version
 npm --version
 ```
 
-## Local setup
-
-### 1. Get the source code
+### 1. Clone the repository
 
 ```bash
 git clone https://github.com/cws31/wallet-and-withdrawal-system.git
 cd wallet-and-withdrawal-system
 ```
 
-Replace the placeholder URL with the HTTPS or SSH URL shown on your GitHub repository page.
-
 ### 2. Configure the backend
 
-Create a local environment file from the example:
+If `backend/.env.example` exists, copy it to `backend/.env` and fill in local values:
 
 ```bash
 cp backend/.env.example backend/.env
 ```
 
-Edit `backend/.env` with your local MySQL connection, database username/password, a strong JWT secret, CORS origins, and Redis settings. Never commit the real `.env` file or production credentials.
+Configure the database URL and credentials, JWT secret and expiration, CORS origins, and Redis settings. Create the local database and make sure required services are available.
 
-Create an empty MySQL database for local development and ensure the configured Redis instance is available. Confirm that `backend/src/main/resources/application.properties` reads the environment variables expected by `backend/.env.example`; environment variable names must match exactly.
+> Never commit `.env` files, passwords, JWT secrets, or database URLs containing credentials. Confirm that variable names in the environment file match those expected by the application configuration.
 
 ### 3. Start the backend
 
-macOS/Linux:
+**macOS / Linux**
 
 ```bash
 cd backend
 ./mvnw spring-boot:run
 ```
 
-Windows PowerShell or Command Prompt:
+**Windows**
 
 ```bat
 cd backend
 mvnw.cmd spring-boot:run
 ```
 
-The default local API port is configured through `SERVER_PORT` (the example uses `8080`). Flyway applies the database migrations during application startup when correctly configured.
+The default API port is `8080`, unless overridden by configuration. Flyway applies database migrations at startup when enabled and correctly configured.
 
 ### 4. Start the frontend
 
-Open a second terminal from the repository root:
+Open a second terminal:
 
 ```bash
 cd frontend
 npm install
 ```
 
-Create the frontend environment file:
+If `frontend/.env.example` exists, copy it to `.env`:
 
 ```bash
 cp .env.example .env
 ```
 
-Set `VITE_API_BASE_URL` to the backend base URL, for example `http://localhost:8080`, then start Vite:
+Set `VITE_API_BASE_URL` to the backend base URL (for example, `http://localhost:8080`) and start the development server:
 
 ```bash
 npm run dev
 ```
 
-Open the local URL printed by Vite. If the frontend and backend run on different origins, configure the backend CORS allowlist accordingly.
+Open the local URL printed by Vite. If frontend and backend use different origins, configure the backend CORS allowlist accordingly.
 
-## API overview
+## API Overview
 
-The exact request and response schemas are documented in [`API_DOCUMENTATION.md`](API_DOCUMENTATION.md). Main API groups include:
+The following are representative endpoint groups. Check `API_DOCUMENTATION.md` for exact routes, request/response schemas, and permissions.
 
 | Area | Example endpoints |
 |---|---|
 | Authentication | `POST /api/auth/register`, `POST /api/auth/login`, `GET /api/auth/me` |
 | Wallet | `GET /api/wallet`, `GET /api/wallet/transactions`, `GET /api/wallet/summary` |
 | Payout configuration | `GET /api/payouts/configuration` |
-| Withdrawals | `POST /api/withdrawals`, `GET /api/withdrawals`, `GET /api/withdrawals/{withdrawalId}` |
-| Admin withdrawal queue | `GET /api/withdrawals/admin?page=1&limit=20` (admin only) |
-| Admin withdrawal actions | `PATCH /api/withdrawals/{withdrawalId}/processing`, `/approve`, `/reject`, and `/cancel` (see API docs for exact paths and permissions) |
-| Reconciliation | `GET /api/admin/reconciliation/wallet/{walletId}` |
+| Withdrawals | `POST /api/withdrawals`, `GET /api/withdrawals` |
 | Health | `GET /actuator/health` |
-| OpenAPI | `GET /v3/api-docs` and the configured Swagger UI route |
+| OpenAPI | `GET /v3/api-docs` |
 
-Protected endpoints require the authentication mechanism configured by the backend. Administrative endpoints require appropriate authorization. Consult the API documentation and security configuration before using the endpoints.
+Protected endpoints require the configured authentication mechanism. Administrative operations require the appropriate role and authorization.
 
-## Database migrations
+## Database Migrations
 
-Flyway migration scripts are maintained under:
+Flyway migration scripts are located in:
 
 ```text
 backend/src/main/resources/db/migration/
 ```
 
-Do not manually edit a migration that has already been applied to a shared database. Add a new versioned migration for subsequent schema changes. See [`docs/database.md`](docs/database.md).
+Use a new versioned migration for subsequent schema changes. Avoid editing migrations that have already been applied to a shared database.
 
 ## Testing
 
-Run backend tests from the `backend/` directory:
+Run backend tests from `backend/`:
 
 ```bash
 ./mvnw test
@@ -231,56 +253,48 @@ On Windows:
 mvnw.cmd test
 ```
 
-Some integration tests may require a reachable MySQL/Redis instance and correctly configured test properties. Run the frontend production build and lint checks from `frontend/`:
+Some integration tests may require a reachable MySQL and Redis instance with valid configuration.
+
+Run frontend checks from `frontend/`:
 
 ```bash
 npm ci
-npm run build
 npm run lint
+npm run build
 ```
 
-Only report test counts after running the commands against the current commit. A previously recorded test count is not a substitute for a fresh test result.
+Report test results only after running the checks against the commit being evaluated. The existence of a CI workflow does not by itself mean the latest run passed.
 
-## Continuous integration
+## Security Notes
 
-GitHub Actions is configured in [`.github/workflows/ci.yml`](.github/workflows/ci.yml). On pushes to `main`/`master`, pull requests, and manual runs, it:
-
-- runs backend Maven verification/tests with Java 21, MySQL 8.4, and Redis 7;
-- installs the locked frontend dependencies with `npm ci`;
-- runs frontend lint and a production build.
-
-The workflow reports the result of the current commit. Do not describe the build as passing until the Actions run completes successfully.
-
-## Security notes
-
-- Never commit `.env` files, passwords, JWT secrets, database URLs containing credentials, access tokens, or real user data.
-- Keep `backend/.env.example` and `frontend/.env.example` limited to placeholders and non-sensitive local defaults.
-- Use a strong, unique JWT secret outside local development.
-- Do not expose database or Redis ports publicly for a demo deployment.
-- Restrict CORS origins and administrative endpoints to the intended environments and roles.
-- Wallet credit/debit endpoints and reconciliation/admin APIs must remain protected; do not expose them as public user operations.
-- Review logging to ensure tokens, passwords, payout details, and other sensitive data are not written to logs.
+- Never commit credentials, JWT secrets, tokens, or real user data.
+- Use strong, unique secrets outside local development.
+- Keep wallet credit/debit and administrative endpoints protected.
+- Validate wallet operations, payout options, and withdrawal requests on the server.
+- Restrict CORS to the intended frontend origins.
+- Avoid exposing database and Redis ports publicly.
+- Ensure logs do not contain passwords, tokens, or sensitive payout details.
 
 ## Documentation
 
-- [`API_DOCUMENTATION.md`](API_DOCUMENTATION.md) — endpoint reference
-- [`docs/architecture.md`](docs/architecture.md) — system architecture
-- [`docs/database.md`](docs/database.md) — database design and migrations
-- [`docs/wallet-accounting.md`](docs/wallet-accounting.md) — wallet and ledger concepts
-- [`docs/withdrawal-flow.md`](docs/withdrawal-flow.md) — withdrawal lifecycle
-- [`docs/idempotency.md`](docs/idempotency.md) — idempotency behavior
-- [`docs/security.md`](docs/security.md) — security controls
-- [`docs/rate-limiting.md`](docs/rate-limiting.md) — rate-limiting configuration
-- [`docs/reconciliation.md`](docs/reconciliation.md) — wallet/ledger reconciliation
-- [`docs/testing.md`](docs/testing.md) — test guidance
-- [`postman/`](postman/) — API request collection
+- [API Documentation](API_DOCUMENTATION.md)
+- [Architecture](docs/architecture.md)
+- [Database Design](docs/database.md)
+- [Wallet Accounting](docs/wallet-accounting.md)
+- [Withdrawal Flow](docs/withdrawal-flow.md)
+- [Idempotency](docs/idempotency.md)
+- [Security](docs/security.md)
+- [Rate Limiting](docs/rate-limiting.md)
+- [Reconciliation](docs/reconciliation.md)
+- [Testing Guide](docs/testing.md)
+- [Postman Collection](postman/)
 
-## Current limitations
+> Check that each linked document exists at the listed path in your repository. Remove or update links that do not match the actual filenames.
 
-- This repository is a development/demo project and has not been independently certified for production financial use.
-- A payout-job/worker/provider abstraction does not by itself establish a live payout integration. Configure and validate a real provider, credentials, callbacks, reconciliation, retries, and operational controls before processing real payouts.
-- Test results and deployment behavior depend on the current code and environment; verify them against the commit you intend to publish.
+## Current Limitations
+
+This is a development and demonstration project and has not been independently certified for production financial use. A payout configuration or job queue does not by itself establish a live payout-provider integration. Real-money processing would require a verified provider integration, secure credentials, callback validation, retries, reconciliation, and appropriate operational controls.
 
 ## Contributing
 
-Keep changes focused and reviewable. Update tests and relevant documentation when changing wallet accounting, withdrawal transitions, security rules, API contracts, or database schema. Never include secrets or local build artifacts in commits.
+Keep changes focused and reviewable. Update tests and documentation when changing wallet accounting, withdrawal transitions, API contracts, security controls, or database schema. Never commit secrets or local build artifacts.
