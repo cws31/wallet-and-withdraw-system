@@ -17,13 +17,9 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.util.List;
 
-
 @Component
 @RequiredArgsConstructor
-@ConditionalOnProperty(
-        name = "veloop.demo-data.enabled",
-        havingValue = "true",
-        matchIfMissing = false)
+@ConditionalOnProperty(name = "veloop.demo-data.enabled", havingValue = "true", matchIfMissing = false)
 public class DemoDataInitializer implements CommandLineRunner {
 
     private static final String DEMO_SOURCE = "DEMO_SEED";
@@ -39,16 +35,22 @@ public class DemoDataInitializer implements CommandLineRunner {
     public void run(String... args) {
         List<DemoAccount> users = List.of(
                 new DemoAccount("Demo User", "demo@veloop.test", "USER", DEMO_PASSWORD, 26000, 5000, 100, 500, 3),
-                new DemoAccount("Demo User 02", "demo.user02@veloop.test", "USER", DEMO_PASSWORD, 12000, 1000, 25, 50, 1),
-                new DemoAccount("Demo User 03", "demo.user03@veloop.test", "USER", DEMO_PASSWORD, 18500, 2500, 40, 100, 2),
+                new DemoAccount("Demo User 02", "demo.user02@veloop.test", "USER", DEMO_PASSWORD, 12000, 1000, 25, 50,
+                        1),
+                new DemoAccount("Demo User 03", "demo.user03@veloop.test", "USER", DEMO_PASSWORD, 18500, 2500, 40, 100,
+                        2),
                 new DemoAccount("Demo User 04", "demo.user04@veloop.test", "USER", DEMO_PASSWORD, 7500, 500, 10, 25, 0),
-                new DemoAccount("Demo User 05", "demo.user05@veloop.test", "USER", DEMO_PASSWORD, 32000, 7000, 150, 300, 5),
-                new DemoAccount("Demo User 06", "demo.user06@veloop.test", "USER", DEMO_PASSWORD, 9400, 1200, 20, 60, 1),
-                new DemoAccount("Demo User 07", "demo.user07@veloop.test", "USER", DEMO_PASSWORD, 22000, 3500, 75, 150, 3),
+                new DemoAccount("Demo User 05", "demo.user05@veloop.test", "USER", DEMO_PASSWORD, 32000, 7000, 150, 300,
+                        5),
+                new DemoAccount("Demo User 06", "demo.user06@veloop.test", "USER", DEMO_PASSWORD, 9400, 1200, 20, 60,
+                        1),
+                new DemoAccount("Demo User 07", "demo.user07@veloop.test", "USER", DEMO_PASSWORD, 22000, 3500, 75, 150,
+                        3),
                 new DemoAccount("Demo User 08", "demo.user08@veloop.test", "USER", DEMO_PASSWORD, 5100, 300, 5, 10, 0),
-                new DemoAccount("Demo User 09", "demo.user09@veloop.test", "USER", DEMO_PASSWORD, 14500, 1800, 35, 80, 2),
-                new DemoAccount("Demo User 10", "demo.user10@veloop.test", "USER", DEMO_PASSWORD, 27500, 4500, 90, 200, 4)
-        );
+                new DemoAccount("Demo User 09", "demo.user09@veloop.test", "USER", DEMO_PASSWORD, 14500, 1800, 35, 80,
+                        2),
+                new DemoAccount("Demo User 10", "demo.user10@veloop.test", "USER", DEMO_PASSWORD, 27500, 4500, 90, 200,
+                        4));
 
         int createdUsers = 0;
         int skippedUsers = 0;
@@ -78,7 +80,6 @@ public class DemoDataInitializer implements CommandLineRunner {
         System.out.println("IMPORTANT: development/test credentials only; do not enable demo data in production.");
     }
 
-   
     private boolean seedAccount(DemoAccount account) {
         if (userRepository.existsByEmail(account.email())) {
             return false;
@@ -98,7 +99,6 @@ public class DemoDataInitializer implements CommandLineRunner {
         Long userId = savedUser.getId();
         walletService.createWallet(userId);
 
-     
         if ("USER".equals(account.role())) {
             seedUserWallet(account, userId);
         }
@@ -108,22 +108,26 @@ public class DemoDataInitializer implements CommandLineRunner {
     private void seedUserWallet(DemoAccount account, Long userId) {
         String suffix = account.email().replaceAll("[^A-Za-z0-9]", "-").toUpperCase();
 
-      
         if ("demo@veloop.test".equals(account.email())) {
-        
+
             credit(userId, Currency.VES, 10000, TransactionType.AD_REWARD, suffix + "-VES-AD", "Demo ad reward");
-            credit(userId, Currency.VES, 5000, TransactionType.DAILY_REWARD, suffix + "-VES-DAILY", "Demo daily reward");
-            credit(userId, Currency.VES, 5000, TransactionType.REFERRAL, suffix + "-VES-REFERRAL", "Demo referral reward");
+            credit(userId, Currency.VES, 5000, TransactionType.DAILY_REWARD, suffix + "-VES-DAILY",
+                    "Demo daily reward");
+            credit(userId, Currency.VES, 5000, TransactionType.REFERRAL, suffix + "-VES-REFERRAL",
+                    "Demo referral reward");
             credit(userId, Currency.VES, 6000, TransactionType.BONUS, suffix + "-VES-BONUS", "Demo bonus");
         } else {
-            credit(userId, Currency.VES, account.ves(), TransactionType.AD_REWARD, suffix + "-VES-AD", "Demo ad reward");
-            credit(userId, Currency.VES, account.ves() / 4, TransactionType.DAILY_REWARD, suffix + "-VES-DAILY", "Demo daily reward");
+            credit(userId, Currency.VES, account.ves(), TransactionType.AD_REWARD, suffix + "-VES-AD",
+                    "Demo ad reward");
+            credit(userId, Currency.VES, account.ves() / 4, TransactionType.DAILY_REWARD, suffix + "-VES-DAILY",
+                    "Demo daily reward");
         }
         credit(userId, Currency.SVES, account.sves(), TransactionType.REWARD, suffix + "-SVES", "Demo SVES reward");
-        credit(userId, Currency.GEMS, account.gems(), TransactionType.GAME_REWARD, suffix + "-GEMS", "Demo gems reward");
-        credit(userId, Currency.TOKENS, account.tokens(), TransactionType.GAME_REWARD, suffix + "-TOKENS", "Demo tokens reward");
+        credit(userId, Currency.GEMS, account.gems(), TransactionType.GAME_REWARD, suffix + "-GEMS",
+                "Demo gems reward");
+        credit(userId, Currency.TOKENS, account.tokens(), TransactionType.GAME_REWARD, suffix + "-TOKENS",
+                "Demo tokens reward");
         credit(userId, Currency.SPINS, account.spins(), TransactionType.BONUS, suffix + "-SPINS", "Demo spins bonus");
-
 
         if ("demo@veloop.test".equals(account.email())) {
             walletService.debitWallet(userId, new WalletDebitRequest(
@@ -133,7 +137,7 @@ public class DemoDataInitializer implements CommandLineRunner {
     }
 
     private void credit(Long userId, Currency currency, long amount,
-                        TransactionType type, String reference, String description) {
+            TransactionType type, String reference, String description) {
         if (amount <= 0) {
             return;
         }

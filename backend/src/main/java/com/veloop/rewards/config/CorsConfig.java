@@ -13,56 +13,61 @@ import java.util.List;
 @Configuration
 public class CorsConfig {
 
-    private final List<String> allowedOrigins;
+        private final List<String> allowedOrigins;
 
-    public CorsConfig(
-            @Value("${cors.allowed-origins:}") String allowedOrigins) {
+        public CorsConfig(
+                        @Value("${cors.allowed-origins:}") String allowedOrigins) {
 
-        this.allowedOrigins = Arrays.stream(allowedOrigins.split(","))
-                .map(String::trim)
-                .filter(origin -> !origin.isBlank())
-                .toList();
+                this.allowedOrigins = Arrays.stream(allowedOrigins.split(","))
+                                .map(String::trim)
+                                .filter(origin -> !origin.isBlank())
+                                .toList();
 
-        if (this.allowedOrigins.contains("*")) {
-            throw new IllegalStateException(
-                    "CORS wildcard origin (*) is not allowed. Configure explicit trusted origins.");
+                if (this.allowedOrigins.contains("*")) {
+                        throw new IllegalStateException(
+                                        "CORS wildcard origin (*) is not allowed. Configure explicit trusted origins.");
+                }
         }
-    }
 
-    @Bean
-    public CorsConfigurationSource corsConfigurationSource() {
+        @Bean
+        public CorsConfigurationSource corsConfigurationSource() {
 
-        CorsConfiguration configuration = new CorsConfiguration();
+                CorsConfiguration configuration = new CorsConfiguration();
 
-        configuration.setAllowedOrigins(allowedOrigins);
+                configuration.setAllowedOrigins(allowedOrigins);
 
-        configuration.setAllowedMethods(List.of(
-                "GET",
-                "POST",
-                "PUT",
-                "PATCH",
-                "DELETE",
-                "OPTIONS"));
+                configuration.setAllowedMethods(List.of(
+                                "GET",
+                                "POST",
+                                "PUT",
+                                "PATCH",
+                                "DELETE",
+                                "OPTIONS"));
 
-        configuration.setAllowedHeaders(List.of(
-                "Authorization",
-                "Content-Type",
-                "Accept",
-                "Idempotency-Key"));
+                configuration.setAllowedHeaders(List.of(
+                                "Authorization",
+                                "Content-Type",
+                                "Accept",
+                                "Idempotency-Key",
+                                "X-Correlation-ID",
+                                "X-Request-Id",
+                                "X-Correlation-Id"));
 
-        configuration.setExposedHeaders(List.of(
-                "Location"));
+                configuration.setExposedHeaders(List.of(
+                                "Location",
+                                "X-Correlation-ID",
+                                "Retry-After"));
 
-        configuration.setAllowCredentials(false);
+                configuration.setAllowCredentials(false);
 
-        configuration.setMaxAge(3600L);
+                configuration.setMaxAge(3600L);
 
-        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+                UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
 
-        source.registerCorsConfiguration(
-                "/**",
-                configuration);
+                source.registerCorsConfiguration(
+                                "/**",
+                                configuration);
 
-        return source;
-    }
+                return source;
+        }
 }
