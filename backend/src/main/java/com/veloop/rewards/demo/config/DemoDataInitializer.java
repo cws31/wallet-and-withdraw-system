@@ -50,6 +50,8 @@ public class DemoDataInitializer implements CommandLineRunner {
                 new DemoAccount("Demo User 09", "demo.user09@veloop.test", "USER", DEMO_PASSWORD, 14500, 1800, 35, 80,
                         2),
                 new DemoAccount("Demo User 10", "demo.user10@veloop.test", "USER", DEMO_PASSWORD, 27500, 4500, 90, 200,
+                        4),
+                        new DemoAccount("Admin User ", "admin.user@veloop.test", "ADMIN", ADMIN_PASSWORD, 27500, 4500, 90, 200,
                         4));
 
         int createdUsers = 0;
